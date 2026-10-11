@@ -216,6 +216,16 @@ test('the in-page recolorer matches the backend algorithm byte for byte', () => 
     for (let i = 0; i < 64; i++) png.data.set([120, 120, 120, 255], i * 4);
     fixtures.push(['all-gray', PNG.sync.write(png)]);
   }
+  /* Dark-theme chart: probable background (94% of pixels), two series, and a
+     near-black chromatic edge pixel that must not be tinted. */
+  {
+    const png = new PNG({ width: 200, height: 140 });
+    for (let i = 0; i < 200 * 140; i++) png.data.set([25, 42, 90, 255], i * 4);
+    for (let x = 20; x < 180; x++) for (let y = 40; y < 60; y++) png.data.set([220, 60, 50, 255], (y * 200 + x) * 4);
+    for (let x = 20; x < 180; x++) for (let y = 80; y < 100; y++) png.data.set([60, 180, 70, 255], (y * 200 + x) * 4);
+    png.data.set([70, 20, 18, 255], (39 * 200 + 19) * 4);
+    fixtures.push(['dark-theme', PNG.sync.write(png)]);
+  }
   /* A real chart from the repo (matplotlib colors, anti-aliasing, 2400x1200). */
   const realChart = path.join(__dirname, '..', '..', 'BananaHacks', 'chart_01.png');
   if (fs.existsSync(realChart)) fixtures.push(['real chart', fs.readFileSync(realChart)]);
@@ -225,8 +235,9 @@ test('the in-page recolorer matches the backend algorithm byte for byte', () => 
   for (const [name, buffer] of fixtures) {
     const input = PNG.sync.read(buffer);
     const inputPixels = new Uint8ClampedArray(input.data);
-    const backend = PNG.sync.read(recolorPng(buffer).png);
-    const backendReport = recolorPng(buffer).report;
+    const backendResult = recolorPng(buffer);
+    const backend = PNG.sync.read(backendResult.png);
+    const backendReport = backendResult.report;
 
     const before = [...inputPixels];
     const { data: frontend, colorGroups } = recolor(inputPixels);
@@ -238,6 +249,26 @@ test('the in-page recolorer matches the backend algorithm byte for byte', () => 
       assert.equal(frontend[i], backend.data[i], `${name}: pixel differs at ${i} (frontend ${frontend[i]} vs backend ${backend.data[i]})`);
     }
     assert.equal(colorGroups, backendReport.color_groups, `${name}: color group count differs`);
+  }
+
+  /* The dark-theme fixture locks the luminance-band and background behavior
+     on both implementations: background pixel and near-black edge pixel are
+     untouched, the series bars are recolored. */
+  {
+    const dark = fixtures.find(([name]) => name === 'dark-theme');
+    const input = PNG.sync.read(dark[1]);
+    const backendResult = recolorPng(dark[1]);
+    const backendOut = PNG.sync.read(backendResult.png);
+    const { data: frontendOut } = recolor(new Uint8ClampedArray(input.data));
+    const at = (data, index) => [...data.subarray(index * 4, index * 4 + 4)];
+    const bgIndex = 5 * 200 + 5;
+    const darkEdge = 39 * 200 + 19;
+    assert.deepEqual(at(backendOut.data, bgIndex), [25, 42, 90, 255], 'backend background changed');
+    assert.deepEqual([...frontendOut.subarray(bgIndex * 4, bgIndex * 4 + 4)], [25, 42, 90, 255], 'frontend background changed');
+    assert.deepEqual(at(backendOut.data, darkEdge), [70, 20, 18, 255], 'backend tinted a near-black pixel');
+    assert.deepEqual([...frontendOut.subarray(darkEdge * 4, darkEdge * 4 + 4)], [70, 20, 18, 255], 'frontend tinted a near-black pixel');
+    assert.equal(backendResult.backgrounds.length, 1);
+    assert.equal(backendResult.report.color_groups, 2);
   }
 });
 

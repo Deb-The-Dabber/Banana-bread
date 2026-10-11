@@ -39,9 +39,10 @@ function samplePng() {
 
 /* PNG with three flat color regions (red, blue, green) of controllable size,
    mimicking a chart with a dominant colored block (e.g. a title) and smaller
-   series. */
+   series. Padded with white so no region trips the probable-background rule
+   (>60% of all pixels) the way a real series never would. */
 function threeColorPng({ red, blue, green }) {
-  const total = red + blue + green;
+  const total = Math.max(red + blue + green, Math.ceil((red + blue + green) / 0.4));
   const width = 10;
   const height = Math.ceil(total / width);
   const png = new PNG({ width, height });
@@ -55,6 +56,9 @@ function threeColorPng({ red, blue, green }) {
       index++;
     }
   };
+  for (let i = index; i < width * height; i++) {
+    png.data[i * 4] = 255; png.data[i * 4 + 1] = 255; png.data[i * 4 + 2] = 255; png.data[i * 4 + 3] = 255;
+  }
   fill(red, [196, 60, 40]);
   fill(blue, [40, 90, 200]);
   fill(green, [40, 160, 80]);
@@ -626,4 +630,33 @@ test('extractJsonFromModelReply tolerates fences and prose', () => {
   assert.deepEqual(extractJsonFromModelReply('Sure! ' + JSON.stringify(payload)), payload);
   assert.deepEqual(extractJsonFromModelReply(JSON.stringify(payload)), payload);
   assert.equal(extractJsonFromModelReply('no json here'), null);
+});
+
+test('recoloring leaves probable backgrounds and out-of-band dark pixels unchanged', () => {
+  /* Dark-theme chart: navy canvas covering ~94% of the image plus two small
+     series and a near-black saturated edge pixel beside the red bar. */
+  const png = new PNG({ width: 600, height: 400 });
+  for (let i = 0; i < 600 * 400; i++) png.data.set([25, 42, 90, 255], i * 4);
+  for (let x = 60; x < 560; x++) for (let y = 100; y < 140; y++) png.data.set([220, 60, 50, 255], (y * 600 + x) * 4);
+  for (let x = 60; x < 560; x++) for (let y = 200; y < 240; y++) png.data.set([60, 180, 70, 255], (y * 600 + x) * 4);
+  png.data.set([70, 20, 18, 255], (99 * 600 + 59) * 4); /* near-black, chromatic, next to the red bar */
+  const raw = PNG.sync.write(png);
+  const { png: outPng, report, backgrounds } = recolorPng(raw);
+  const out = PNG.sync.read(outPng);
+
+  /* The background must stay untouched and not appear in the report. */
+  assert.deepEqual([...out.data.subarray(0, 4)], [25, 42, 90, 255]);
+  assert.equal(report.color_groups, 2, 'only the two series are mapped');
+  assert.equal(backgrounds.length, 1);
+  assert.ok(backgrounds[0].share > 0.6);
+
+  /* The series bars are recolored… */
+  const redBefore = [...png.data.subarray((100 * 600 + 60) * 4, (100 * 600 + 60) * 4 + 3)];
+  const redAfter = [...out.data.subarray((100 * 600 + 60) * 4, (100 * 600 + 60) * 4 + 3)];
+  assert.notDeepEqual(redBefore, redAfter);
+
+  /* …but the near-black edge pixel is NOT tinted (luminance band applies to
+     mapping too, symmetric with detection). */
+  const darkIndex = (99 * 600 + 59) * 4;
+  assert.deepEqual([...out.data.subarray(darkIndex, darkIndex + 4)], [70, 20, 18, 255]);
 });

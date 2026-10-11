@@ -202,6 +202,14 @@ function buildReport(clusters, assignment) {
   };
 }
 
+/* A cluster covering more than this share of ALL pixels is almost certainly
+   a background (dark-theme canvases, slides, screenshots) rather than a data
+   series. It is conservatively left unchanged — the failure mode is "less
+   recoloring", never a mangled image — and the fact is surfaced to the user
+   instead of being guessed away. Real fills stay far below this: the largest
+   series in the repo's own sample charts covers ~16%. */
+const BACKGROUND_SHARE_THRESHOLD = 0.6;
+
 function recolorPng(buffer) {
   if (
     buffer.length < 24 ||
@@ -228,16 +236,30 @@ function recolorPng(buffer) {
   }
 
   const clusters = detectSeriesColors(data);
-  const assignment = assignPaletteIndices(clusters, ACCESSIBLE_PALETTE.map(colorFromHex));
+  /* Mark probable backgrounds; they keep their pixels and never claim a
+     palette slot that a real series needs (e.g. a navy canvas stealing the
+     blue entry from an actual blue series). */
+  const totalPixels = width * height;
+  for (const cluster of clusters) {
+    cluster.isBackground = cluster.count > totalPixels * BACKGROUND_SHARE_THRESHOLD;
+  }
+  const activeClusters = clusters.filter(cluster => !cluster.isBackground);
+  const palette = ACCESSIBLE_PALETTE.map(colorFromHex);
+  const activeAssignment = assignPaletteIndices(activeClusters, palette);
+  activeClusters.forEach((cluster, index) => { cluster.paletteIndex = activeAssignment[index]; });
   const recolored = new PNG({ width, height });
   recolored.data.set(data);
-  const palette = ACCESSIBLE_PALETTE.map(colorFromHex);
 
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
     if (data[i + 3] < 128 || !isChromatic(r, g, b)) continue;
+    /* Symmetry with detection: the same luminance band applies here, so
+       near-black text edges and near-white pixels are never tinted even
+       when they sit close to a series color. */
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    if (luminance < 24 || luminance > 246) continue;
 
     let nearest = -1;
     let nearestDistance = Infinity;
@@ -248,16 +270,21 @@ function recolorPng(buffer) {
         nearestDistance = distance;
       }
     }
-    if (nearest < 0 || nearestDistance >= COLOR_MATCH_DISTANCE ** 2) continue;
+    if (nearest < 0 || clusters[nearest].isBackground || nearestDistance >= COLOR_MATCH_DISTANCE ** 2) continue;
 
     const confidence = Math.max(0, 1 - Math.sqrt(nearestDistance) / COLOR_MATCH_DISTANCE);
-    const target = palette[assignment[nearest]];
+    const target = palette[clusters[nearest].paletteIndex];
     recolored.data[i] = Math.round(r + (target[0] - r) * confidence);
     recolored.data[i + 1] = Math.round(g + (target[1] - g) * confidence);
     recolored.data[i + 2] = Math.round(b + (target[2] - b) * confidence);
   }
 
-  return { png: PNG.sync.write(recolored), report: buildReport(clusters, assignment) };
+  const backgrounds = clusters.filter(cluster => cluster.isBackground);
+  return {
+    png: PNG.sync.write(recolored),
+    report: buildReport(activeClusters, activeAssignment),
+    backgrounds: backgrounds.map(cluster => ({ color: cluster.color.map(Math.round), share: cluster.count / totalPixels }))
+  };
 }
 
 /* Deterministic box-average downscale (no dependencies, integer math). Used

@@ -170,6 +170,11 @@ red maps toward the reddish palette entry rather than an arbitrary slot.
 
 Known limits, by design:
 
+- A cluster covering more than 60% of all pixels (dark-theme canvases,
+  slides, screenshots) is treated as a probable background and left
+  unchanged — the fact is surfaced in the status line and the measured
+  checks instead of being guessed away. A legitimate series that large
+  would stay unrecolored; that trade-off favors never mangling an image.
 - Colored text, titles, and annotations are just chromatic pixels — they
   can be detected as "series" and recolored. The heuristic cannot tell a
   legend swatch from a bar.
@@ -178,8 +183,9 @@ Known limits, by design:
   left alone unless it is within the match distance of a kept cluster.
 - Semantically identical charts with anti-aliasing or gradient fills can
   produce slightly different cluster sets.
-- Neutral pixels (grays, near-black, near-white), transparent pixels, and
-  chromatic pixels far from any cluster are left untouched.
+- Neutral pixels (grays, near-black, near-white), transparent pixels,
+  pixels outside the mid-luminance band, and chromatic pixels far from any
+  cluster are left untouched.
 
 Robust series identification would need chart parsing or user-assisted
 color selection; neither is implemented.

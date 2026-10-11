@@ -298,25 +298,44 @@ const RECOLOR = (() => {
   }
   function recolor(pixels) {
     const clusters = detectSeriesColors(pixels);
-    const assignment = assignPaletteIndices(clusters, ACCESSIBLE_PALETTE);
+    const totalPixels = pixels.length / 4;
+    /* A cluster covering >60% of ALL pixels is almost certainly a background
+       (dark-theme canvas, slide, screenshot) — it is left unchanged instead
+       of being recolored as if it were a data series, and never steals a
+       palette slot from a real series. Mirrors backend/server.js exactly. */
+    for (const cluster of clusters) {
+      cluster.isBackground = cluster.count > totalPixels * 0.6;
+    }
+    const activeClusters = clusters.filter(cluster => !cluster.isBackground);
+    const assignment = assignPaletteIndices(activeClusters, ACCESSIBLE_PALETTE);
+    activeClusters.forEach((cluster, index) => { cluster.paletteIndex = assignment[index]; });
     const out = new Uint8ClampedArray(pixels);
     for (let i = 0; i < pixels.length; i += 4) {
       const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
       if (pixels[i + 3] < 128 || !isChromatic(r, g, b)) continue;
+      /* Same luminance band as detection: near-black and near-white pixels
+         are never tinted, even next to a series color. */
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      if (luminance < 24 || luminance > 246) continue;
       let nearest = -1;
       let nearestDistance = Infinity;
       for (let j = 0; j < clusters.length; j++) {
         const distance = colorDistanceSquared([r, g, b], clusters[j].color);
         if (distance < nearestDistance) { nearest = j; nearestDistance = distance; }
       }
-      if (nearest < 0 || nearestDistance >= COLOR_MATCH_DISTANCE ** 2) continue;
+      if (nearest < 0 || clusters[nearest].isBackground || nearestDistance >= COLOR_MATCH_DISTANCE ** 2) continue;
       const confidence = Math.max(0, 1 - Math.sqrt(nearestDistance) / COLOR_MATCH_DISTANCE);
-      const target = ACCESSIBLE_PALETTE[assignment[nearest]];
+      const target = ACCESSIBLE_PALETTE[clusters[nearest].paletteIndex];
       out[i] = Math.round(r + (target[0] - r) * confidence);
       out[i + 1] = Math.round(g + (target[1] - g) * confidence);
       out[i + 2] = Math.round(b + (target[2] - b) * confidence);
     }
-    return { data: out, colorGroups: clusters.length, groups: clusters.map((cluster, index) => ({ from: cluster.color.map(Math.round), to: ACCESSIBLE_PALETTE[assignment[index]] })) };
+    return {
+      data: out,
+      colorGroups: activeClusters.length,
+      groups: activeClusters.map(cluster => ({ from: cluster.color.map(Math.round), to: ACCESSIBLE_PALETTE[cluster.paletteIndex] })),
+      backgrounds: clusters.filter(cluster => cluster.isBackground).map(cluster => ({ color: cluster.color.map(Math.round), share: cluster.count / totalPixels }))
+    };
   }
   return { recolor };
 })();
@@ -363,7 +382,7 @@ const CVD_CHECKS = (() => {
 })();
 
 const $ = id => document.getElementById(id);
-const state = {original:null, corrected:null, mode:'normal', sample:false, generated:false, groups:null, aiBusy:false, revision:0, correctedRevision:0};
+const state = {original:null, corrected:null, mode:'normal', sample:false, generated:false, groups:null, backgrounds:null, aiBusy:false, revision:0, correctedRevision:0};
 const notes = {
   normal:'Both images are shown in their true colors.',
   deuteranopia:'The original keeps its true colors. The right preview shows an approximate simulation with absent medium-wavelength (M) cone function. The download uses the selected view.',
@@ -421,7 +440,7 @@ async function decodePNG(blob, name='chart.png') {
   } finally { bitmap.close(); }
 }
 function invalidate() {
-  state.revision++; state.correctedRevision++; state.groups=null;
+  state.revision++; state.correctedRevision++; state.groups=null; state.backgrounds=null;
   $('ai-results').hidden=true; $('ai-results').replaceChildren();
 }
 /* Builds the corrected preview item entirely in the browser: run the
@@ -429,12 +448,12 @@ function invalidate() {
    downloadable PNG. The original pixels are never modified. */
 async function recolorItem(item) {
   const { width, height, data } = item.pixels;
-  const { data: recolored, colorGroups, groups } = RECOLOR.recolor(data);
+  const { data: recolored, colorGroups, groups, backgrounds } = RECOLOR.recolor(data);
   const canvas = document.createElement('canvas');
   canvas.width = width; canvas.height = height;
   canvas.getContext('2d').putImageData(new ImageData(recolored, width, height), 0, 0);
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-  return { item: { width, height, pixels: new ImageData(recolored, width, height), blob, name: 'chartsafe-corrected.png' }, colorGroups, groups };
+  return { item: { width, height, pixels: new ImageData(recolored, width, height), blob, name: 'chartsafe-corrected.png' }, colorGroups, groups, backgrounds };
 }
 async function loadOriginal(file) {
   if (!file) return;
@@ -445,12 +464,15 @@ async function loadOriginal(file) {
     if(rev!==state.revision)return;
     state.original=item;render();
     status('Generating the corrected copy in your browser…','busy');
-    const {item: corrected, colorGroups, groups}=await recolorItem(item);
+    const {item: corrected, colorGroups, groups, backgrounds}=await recolorItem(item);
     if(rev!==state.revision || ticket!==state.correctedRevision)return;
-    state.corrected=corrected;state.generated=true;state.groups=groups;render();
+    state.corrected=corrected;state.generated=true;state.groups=groups;state.backgrounds=backgrounds;render();
+    const backgroundNote=backgrounds&&backgrounds.length
+      ?` One color covering ~${Math.round(backgrounds[0].share*100)}% of the image looked like a background, so it was left unchanged — if it is actually a data series, recolor it yourself and load the result.`
+      :'';
     status(colorGroups===0
-      ?'Chart loaded. No dominant chart colors were detected, so the corrected copy matches the original. You can download it now.'
-      :`Chart loaded. ${colorGroups} dominant color group${colorGroups===1?' was':'s were'} recolored in your browser. Review the corrected preview, then download it.`);
+      ?`Chart loaded. No dominant chart colors were detected, so the corrected copy matches the original. You can download it now.`
+      :`Chart loaded. ${colorGroups} dominant color group${colorGroups===1?' was':'s were'} recolored in your browser. Review the corrected preview, then download it.${backgroundNote}`);
   }
   catch(e){if(rev===state.revision){render();status(e.message,'error');}}
 }
@@ -542,7 +564,11 @@ function escapeHtml(value){return String(value).replace(/[&<>"']/g,ch=>({'\x26':
 function colorSwatch(rgb){return `<i class="swatch" style="background:rgb(${rgb[0]},${rgb[1]},${rgb[2]})"></i> <code>#${rgb.map(v=>v.toString(16).padStart(2,'0')).join('')}</code>`;}
 function renderChecks() {
   const groups = state.groups || [];
-  if (groups.length < 2) return `<div class="checks"><h4>Measured checks</h4><p class="check ok"><b>✓</b> Fewer than two dominant color groups were detected — nothing to compare.</p></div>`;
+  const backgrounds = state.backgrounds || [];
+  const backgroundNote = backgrounds.length
+    ? `<p class="check warn"><b>!</b> A color covering ~${Math.round(backgrounds[0].share * 100)}% of the image was treated as a background and left unchanged. If that region is actually a data series, this correction is incomplete.</p>`
+    : '';
+  if (groups.length < 2) return `<div class="checks"><h4>Measured checks</h4>${backgroundNote}<p class="check ok"><b>✓</b> Fewer than two dominant color groups were detected — nothing to compare.</p></div>`;
   const line = (label, colors) => {
     const { pairs, likelyAlike, mayLookSimilar } = CVD_CHECKS.pairReport(colors);
     const flagged = pairs.filter(p => p.minDeltaE < mayLookSimilar).slice(0, 3);
@@ -551,7 +577,7 @@ function renderChecks() {
     const okRow = rest.length ? `<p class="check ok"><b>✓</b> ${rest.length} other pair${rest.length===1?'':'s'} clearly different in every view (min ΔE ${rest[0].minDeltaE.toFixed(1)}).</p>` : '';
     return `<p class="small muted">${label}</p>${rows}${okRow}`;
   };
-  return `<div class="checks"><h4>Measured checks (computed from your image — not AI)</h4>${line('Detected chart colors, before correction:', groups.map(g => g.from))}${line('Mapped palette, after correction:', groups.map(g => g.to))}</div>`;
+  return `<div class="checks"><h4>Measured checks (computed from your image — not AI)</h4>${backgroundNote}${line('Detected chart colors, before correction:', groups.map(g => g.from))}${line('Mapped palette, after correction:', groups.map(g => g.to))}</div>`;
 }
 function renderAiResults(model, analysis) {
   const findings = analysis.findings.length
