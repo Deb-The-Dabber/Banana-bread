@@ -93,6 +93,36 @@ h2{font-size:18px;font-weight:600;letter-spacing:-.45px;margin:12px 0 8px}
 .download{white-space:nowrap;background:var(--lime);border:1px solid #c6dd83;border-radius:6px;color:var(--ink);font-size:11px;padding:10px 13px;font-weight:600}
 .download span{margin-left:6px}
 .simulation-disclaimer{font-size:9px;color:var(--muted);line-height:1.6;margin:19px 0 0}
+.ai-panel{margin-top:26px;border:1px solid var(--line);border-radius:9px;background:var(--white);padding:20px 22px}
+.ai-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.ai-heading h2{margin:0;font-size:18px}
+#analyze{width:auto;margin:0;white-space:nowrap}
+.ai-hint{font-size:11px;color:var(--muted);margin:8px 0 0;line-height:1.6}
+#ai-results{margin-top:14px}
+#ai-results>p:first-child{margin-top:0}
+.findings{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:9px}
+.findings li{border:1px solid var(--line);border-left-width:4px;border-radius:7px;padding:10px 12px;background:#fafbf7;font-size:12px;line-height:1.55}
+.findings li.high{border-left-color:#b84d2e}
+.findings li.medium{border-left-color:#dfb700}
+.findings li.low{border-left-color:#8ba593}
+.sev{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-right:6px}
+.swatch{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:-1px;border:1px solid rgb(0 0 0/15%)}
+.swatch+code{font-size:10px}
+.ai-meta{font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6}
+.checks{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.checks h4{font-size:11px;margin:0 0 6px;color:var(--ink)}
+.check{font-size:11px;margin:5px 0;line-height:1.5;display:flex;gap:8px;align-items:start}
+.check b{flex:none}
+.check.ok b{color:var(--green)}
+.check.warn b{color:#b84d2e}
+dialog{border:1px solid var(--line);border-radius:12px;max-width:440px;padding:24px;margin:auto;background:var(--white);color:var(--ink);font-size:13px;line-height:1.6}
+dialog::backdrop{background:rgb(20 42 34/45%)}
+dialog h3{margin:0 0 10px;font-size:17px}
+.consent-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+.consent-actions button{border:0;border-radius:7px;padding:10px 16px;font-size:12px;font-weight:600;cursor:pointer;width:auto}
+.consent-actions .cancel-btn{border:1px solid var(--line);background:var(--white)}
+.consent-actions .send-btn{background:var(--green);color:#fff}
+@media(max-width:1050px){.ai-panel{padding:16px}}
 .how{padding:43px 0;display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:28px}
 .how .eyebrow{font-size:8px;letter-spacing:1px}.how h2{font-size:22px}
 .how article>span{font-size:8px;color:var(--green)}
@@ -134,6 +164,16 @@ footer{border-top:1px solid var(--line);padding:22px 48px;display:flex;justify-c
 </div>
 <div id="status" class="status" role="status" aria-live="polite">Ready when you are. Start with your chart or explore the sample.</div>
 <div class="result-footer"><div><strong id="result-title">Compare with confidence</strong><p id="result-note">Load a chart to generate its corrected version and download the PNG.</p></div><button class="download" id="download" disabled>Download corrected PNG <span aria-hidden="true">↓</span></button></div>
+<section class="ai-panel" aria-labelledby="ai-title">
+<div class="ai-heading"><h2 id="ai-title">AI chart review</h2><button id="analyze" class="secondary" disabled>Analyze with AI <span aria-hidden="true">✦</span></button></div>
+<p class="ai-hint" id="ai-hint">Optional: a vision model reviews your chart for color accessibility and returns structured findings. Your chart is uploaded for analysis only after you approve it in a consent dialog. The corrected copy above is already generated — this adds model commentary alongside measured checks.</p>
+<div id="ai-results" class="status" hidden></div>
+</section>
+<dialog id="ai-consent" aria-labelledby="ai-consent-title">
+<h3 id="ai-consent-title">Send your chart for AI analysis?</h3>
+<p>Your chart PNG will be uploaded to the AI provider configured on the ChartSafe backend (an NVIDIA-hosted vision model). It is processed in memory by the provider and is not stored by ChartSafe. Nothing is uploaded until you approve.</p>
+<div class="consent-actions"><button id="ai-cancel" class="cancel-btn" type="button">Cancel</button><button id="ai-confirm" class="send-btn" type="button">Send for analysis</button></div>
+</dialog>
 <p class="simulation-disclaimer">Simulations are approximations and vary from individual experience. *The blue-yellow view uses a severe tritanomaly approximation. A recolored image is not a certification of accessibility.</p>
 </div></section>
 <section id="how-it-works" class="how"><div><div class="eyebrow">SMALL CHANGES. CLEARER STORIES.</div><h2>Built around your chart.</h2></div><article><span>01 / UPLOAD</span><h3>Bring the original</h3><p>A clean PNG keeps the chart’s text, axes, and series easy to inspect.</p></article><article><span>02 / COMPARE</span><h3>Change your perspective</h3><p>Switch vision views to preview how the colors may be perceived, while the original keeps its true colors.</p></article><article><span>03 / EXPORT</span><h3>Take it with you</h3><p>Download the corrected PNG — unsimulated, in full resolution, ready for your slides.</p></article></section>
@@ -276,13 +316,54 @@ const RECOLOR = (() => {
       out[i + 1] = Math.round(g + (target[1] - g) * confidence);
       out[i + 2] = Math.round(b + (target[2] - b) * confidence);
     }
-    return { data: out, colorGroups: clusters.length };
+    return { data: out, colorGroups: clusters.length, groups: clusters.map((cluster, index) => ({ from: cluster.color.map(Math.round), to: ACCESSIBLE_PALETTE[assignment[index]] })) };
   }
   return { recolor };
 })();
 
+/* Deterministic accessibility checks — measured from pixels, no AI involved.
+   Each detected color pair is judged by CIELAB ΔE after applying every
+   color-vision simulation, the standard perceptual color difference.
+   Calibration (measured, see backend/test/frontend.test.js):
+   ΔE < 15 → likely look alike (typical red/green chart pairs land at 5–11),
+   15–35 → may look similar at small sizes, ≥ 35 → clearly different. */
+const CVD_CHECKS = (() => {
+  const MODES = ['normal','deuteranopia','protanopia','tritanopia'];
+  const LIKELY_ALIKE = 15;
+  const MAY_LOOK_SIMILAR = 35;
+  function srgbToLinear(c){c/=255;return c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4;}
+  function toLab(rgb){
+    const r=srgbToLinear(rgb[0]),g=srgbToLinear(rgb[1]),b=srgbToLinear(rgb[2]);
+    const X=(0.4124*r+0.3576*g+0.1805*b)/0.95047;
+    const Y=0.2126*r+0.7152*g+0.0722*b;
+    const Z=(0.0193*r+0.1192*g+0.9505*b)/1.08883;
+    const f=t=>t>0.008856?Math.cbrt(t):7.787*t+16/116;
+    const fx=f(X),fy=f(Y),fz=f(Z);
+    return [116*fy-16,500*(fx-fy),200*(fy-fz)];
+  }
+  function deltaE(a,b){const A=toLab(a),B=toLab(b);return Math.hypot(A[0]-B[0],A[1]-B[1],A[2]-B[2]);}
+  function simulateColor(rgb,mode){
+    const out=ChartSafeSimulation.simulate(new Uint8ClampedArray([rgb[0],rgb[1],rgb[2],255]),mode);
+    return [out[0],out[1],out[2]];
+  }
+  function pairReport(colors){
+    const pairs=[];
+    for(let i=0;i<colors.length;i++)for(let j=i+1;j<colors.length;j++){
+      let minDeltaE=Infinity,minMode='normal';
+      for(const mode of MODES){
+        const d=deltaE(simulateColor(colors[i],mode),simulateColor(colors[j],mode));
+        if(d<minDeltaE){minDeltaE=d;minMode=mode;}
+      }
+      pairs.push({i,j,minDeltaE,minMode});
+    }
+    pairs.sort((x,y)=>x.minDeltaE-y.minDeltaE);
+    return { pairs, likelyAlike: LIKELY_ALIKE, mayLookSimilar: MAY_LOOK_SIMILAR };
+  }
+  return { deltaE, pairReport, LIKELY_ALIKE, MAY_LOOK_SIMILAR, MODES };
+})();
+
 const $ = id => document.getElementById(id);
-const state = {original:null, corrected:null, mode:'normal', sample:false, generated:false, revision:0, correctedRevision:0};
+const state = {original:null, corrected:null, mode:'normal', sample:false, generated:false, groups:null, aiBusy:false, revision:0, correctedRevision:0};
 const notes = {
   normal:'Both images are shown in their true colors.',
   deuteranopia:'The original keeps its true colors. The right preview shows an approximate simulation with absent medium-wavelength (M) cone function. Previews only — uploaded and downloaded files are unchanged.',
@@ -293,6 +374,8 @@ function status(message, kind='') { $('status').textContent=message; $('status')
 function controls() {
   $('corrected-upload').disabled=!state.original;
   $('download').disabled=!state.corrected;
+  $('analyze').disabled=!state.original || state.aiBusy;
+  $('analyze').textContent=state.aiBusy?'Analyzing…':'Analyze with AI ✦';
   $('source-badge').textContent=state.sample?'Prepared sample':state.original?'Your chart':'No image loaded';
 }
 const modeNames={deuteranopia:'Deuteranopia',protanopia:'Protanopia',tritanopia:'Tritanopia'};
@@ -338,19 +421,20 @@ async function decodePNG(blob, name='chart.png') {
   } finally { bitmap.close(); }
 }
 function invalidate() {
-  state.revision++; state.correctedRevision++;
+  state.revision++; state.correctedRevision++; state.groups=null;
+  $('ai-results').hidden=true; $('ai-results').replaceChildren();
 }
 /* Builds the corrected preview item entirely in the browser: run the
    recoloring heuristic on the decoded pixels and encode the result as a
    downloadable PNG. The original pixels are never modified. */
 async function recolorItem(item) {
   const { width, height, data } = item.pixels;
-  const { data: recolored, colorGroups } = RECOLOR.recolor(data);
+  const { data: recolored, colorGroups, groups } = RECOLOR.recolor(data);
   const canvas = document.createElement('canvas');
   canvas.width = width; canvas.height = height;
   canvas.getContext('2d').putImageData(new ImageData(recolored, width, height), 0, 0);
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-  return { item: { width, height, pixels: new ImageData(recolored, width, height), blob, name: 'chartsafe-corrected.png' }, colorGroups };
+  return { item: { width, height, pixels: new ImageData(recolored, width, height), blob, name: 'chartsafe-corrected.png' }, colorGroups, groups };
 }
 async function loadOriginal(file) {
   if (!file) return;
@@ -361,9 +445,9 @@ async function loadOriginal(file) {
     if(rev!==state.revision)return;
     state.original=item;render();
     status('Generating the corrected copy in your browser…','busy');
-    const {item: corrected, colorGroups}=await recolorItem(item);
+    const {item: corrected, colorGroups, groups}=await recolorItem(item);
     if(rev!==state.revision || ticket!==state.correctedRevision)return;
-    state.corrected=corrected;state.generated=true;render();
+    state.corrected=corrected;state.generated=true;state.groups=groups;render();
     status(colorGroups===0
       ?'Chart loaded. No dominant chart colors were detected, so the corrected copy matches the original. You can download it now.'
       :`Chart loaded. ${colorGroups} dominant color group${colorGroups===1?' was':'s were'} recolored in your browser. Review the corrected preview, then download it.`);
@@ -432,6 +516,78 @@ document.querySelectorAll('input[name="vision"]').forEach(r=>r.addEventListener(
 $('dropzone').addEventListener('drop',e=>loadOriginal(e.dataTransfer.files[0]));
 window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
 $('download').addEventListener('click',()=>{if(!state.corrected)return;const url=URL.createObjectURL(state.corrected.blob);const a=document.createElement('a');a.href=url;a.download='chartsafe-corrected.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+
+/* --- AI chart review (optional, consent-gated) ---
+   The chart is uploaded only after the user approves the consent dialog,
+   and only to the ChartSafe backend running on this machine, which holds
+   the provider key. On static hosting (GitHub Pages) the button explains
+   the limitation instead of dead-ending. */
+function escapeHtml(value){return String(value).replace(/[&<>"']/g,ch=>({'\x26':'\x26amp;','<':'\x26lt;','>':'\x26gt;','"':'\x26quot;',"'":'\x26#39;'}[ch]));}
+function colorSwatch(rgb){return `<i class="swatch" style="background:rgb(${rgb[0]},${rgb[1]},${rgb[2]})"></i> <code>#${rgb.map(v=>v.toString(16).padStart(2,'0')).join('')}</code>`;}
+function renderChecks() {
+  const groups = state.groups || [];
+  if (groups.length < 2) return `<div class="checks"><h4>Measured checks</h4><p class="check ok"><b>✓</b> Fewer than two dominant color groups were detected — nothing to compare.</p></div>`;
+  const line = (label, colors) => {
+    const { pairs, likelyAlike, mayLookSimilar } = CVD_CHECKS.pairReport(colors);
+    const flagged = pairs.filter(p => p.minDeltaE < mayLookSimilar).slice(0, 3);
+    const rest = pairs.filter(p => p.minDeltaE >= mayLookSimilar);
+    const rows = flagged.map(p => `<p class="check warn"><b>!</b> ${colorSwatch(colors[p.i])} vs ${colorSwatch(colors[p.j])} — ${p.minDeltaE < likelyAlike ? 'likely look alike' : 'may look similar at small sizes'} under ${p.minMode} (ΔE ${p.minDeltaE.toFixed(1)}).</p>`).join('');
+    const okRow = rest.length ? `<p class="check ok"><b>✓</b> ${rest.length} other pair${rest.length===1?'':'s'} clearly different in every view (min ΔE ${rest[0].minDeltaE.toFixed(1)}).</p>` : '';
+    return `<p class="small muted">${label}</p>${rows}${okRow}`;
+  };
+  return `<div class="checks"><h4>Measured checks (computed from your image — not AI)</h4>${line('Detected chart colors, before correction:', groups.map(g => g.from))}${line('Mapped palette, after correction:', groups.map(g => g.to))}</div>`;
+}
+function renderAiResults(model, analysis) {
+  const findings = analysis.findings.length
+    ? `<ul class="findings">` + analysis.findings.map(f =>
+        `<li class="${escapeHtml(f.severity)}"><span class="sev">${escapeHtml(f.severity)}</span><strong>${escapeHtml(f.issue)}</strong>${f.where ? ` <span class="muted">— ${escapeHtml(f.where)}</span>` : ''}${f.suggestion ? `<br><span class="muted">Suggestion: ${escapeHtml(f.suggestion)}</span>` : ''}</li>`
+      ).join('') + `</ul>`
+    : '<p class="small muted">The model called out no specific problems.</p>';
+  const series = analysis.color_series.length
+    ? `<p class="small muted">Series the model read: ` + analysis.color_series.map(s => `${escapeHtml(s.label || 'unnamed')} (${escapeHtml(s.color)})`).join(' · ') + `</p>`
+    : '';
+  $('ai-results').innerHTML =
+    `<p>${escapeHtml(analysis.summary)}</p>${findings}${series}${renderChecks()}` +
+    `<p class="ai-meta">Model: ${escapeHtml(model)} · chart type: ${escapeHtml(analysis.chart_type)}${analysis.uncertainty ? ` · Uncertainty: ${escapeHtml(analysis.uncertainty)}` : ''}</p>` +
+    `<p class="ai-meta">AI findings are model interpretations, not verified facts. The measured checks above are computed from your image's pixels.</p>`;
+  $('ai-results').hidden=false;
+}
+function renderAiError(message) {
+  $('ai-results').innerHTML = `<p class="check warn"><b>!</b> ${escapeHtml(message)}</p><p class="ai-meta">AI review is optional — the corrected copy, simulations, and downloads above all work without it.</p>`;
+  $('ai-results').hidden=false;
+}
+async function runAnalysis() {
+  $('ai-consent').close();
+  const rev=state.revision;
+  state.aiBusy=true;render();
+  $('ai-results').innerHTML='<p class="muted">Analyzing your chart with the AI model…</p>';$('ai-results').hidden=false;
+  try {
+    const body=new FormData();body.append('image',state.original.blob,state.original.name);
+    const response=await fetch('/api/analyze',{method:'POST',body,signal:AbortSignal.timeout(120000)});
+    let payload=null;
+    try { payload=await response.json(); } catch { payload=null; }
+    if(rev!==state.revision)return;
+    if(!response.ok || !payload || !payload.analysis) throw new Error((payload && payload.error) || `The AI service returned HTTP ${response.status}.`);
+    renderAiResults(payload.model, payload.analysis);
+    status('AI review received. Model findings are interpretations; the measured checks are computed from your pixels.');
+  } catch(e) {
+    if(rev!==state.revision)return;
+    renderAiError(e.name==='TimeoutError'?'The AI model timed out after 120 seconds. Try again.':e.message);
+  } finally {
+    if(rev===state.revision){state.aiBusy=false;render();}
+  }
+}
+$('analyze').addEventListener('click',()=>{
+  if(!state.original || state.aiBusy)return;
+  if(location.hostname.endsWith('.github.io')){
+    renderAiError('AI review needs the ChartSafe backend running on this machine (cd backend && npm start, then open http://127.0.0.1:8000/). This public page is static hosting — it cannot call the AI provider. The corrected copy, simulations, and downloads all work right here without AI.');
+    return;
+  }
+  $('ai-consent').showModal();
+});
+$('ai-cancel').addEventListener('click',()=>$('ai-consent').close());
+$('ai-confirm').addEventListener('click',runAnalysis);
+$('ai-consent').addEventListener('cancel',()=>{state.aiBusy=false;render();});
 controls();
 render();
 </script>

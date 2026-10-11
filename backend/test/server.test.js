@@ -2,14 +2,19 @@
 
 const assert = require('node:assert/strict');
 const { after, before, test } = require('node:test');
+const http = require('node:http');
 const zlib = require('node:zlib');
 const { PNG } = require('pngjs');
 const {
   ACCESSIBLE_PALETTE,
+  analyzeChart,
   assignPaletteIndices,
   createServer,
+  downscalePng,
+  extractJsonFromModelReply,
   recolorPng,
-  recolorPngBuffer
+  recolorPngBuffer,
+  validateAnalysis
 } = require('../server');
 
 let server;
@@ -413,4 +418,212 @@ test('serves the landing page and its locally installed Anime.js bundle', async 
   assert.equal(anime.status, 200);
   assert.match(anime.headers.get('content-type'), /javascript/);
   assert.ok((await anime.arrayBuffer()).byteLength > 10_000);
+});
+
+/* ---------------- AI analysis endpoint ---------------- */
+
+const CANNED_ANALYSIS = {
+  chart_type: 'bar',
+  summary: 'A bar chart with red and green series that may confuse red-green deficient viewers.',
+  findings: [
+    { severity: 'high', issue: 'Red and green bars are hard to tell apart', where: 'the two series', suggestion: 'Use blue and orange instead.' },
+    { severity: 'nonsense-severity', issue: 'Truncated ' + 'x'.repeat(600), where: 42, suggestion: null }
+  ],
+  color_series: [
+    { label: 'Workshop A', color: 'red' },
+    { label: 'Workshop B', color: 'green' },
+    { label: 7, color: '' }
+  ],
+  uncertainty: 'Cannot read exact values.'
+};
+
+function stubUpstream(handler) {
+  return new Promise(resolve => {
+    const stub = http.createServer((request, response) => {
+      let body = '';
+      request.on('data', chunk => { body += chunk; });
+      request.on('end', () => {
+        try { handler(request, response, body); }
+        catch (error) { response.writeHead(500); response.end(String(error)); }
+      });
+    });
+    stub.listen(0, '127.0.0.1', () => resolve({ stub, url: `http://127.0.0.1:${stub.address().port}` }));
+  });
+}
+
+function completion(content) {
+  return JSON.stringify({ choices: [{ message: { role: 'assistant', content } }] });
+}
+
+function withAiEnv(overrides, run) {
+  const saved = {};
+  for (const key of Object.keys(overrides)) {
+    saved[key] = process.env[key];
+    process.env[key] = overrides[key];
+  }
+  return run().finally(() => {
+    for (const key of Object.keys(saved)) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  });
+}
+
+test('analyze: reports clear 503 when no AI key is configured', async () => {
+  await withAiEnv({ CHARTSAFE_AI_KEY: '' }, async () => {
+    const response = await fetch(`${baseUrl}/api/analyze`, {
+      method: 'POST',
+      headers: { Origin: 'http://localhost:5500' },
+      body: multipartUpload(samplePng())
+    });
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).error, /CHARTSAFE_AI_KEY/);
+  });
+});
+
+test('analyze: GET is rejected with 405 like the recolor route', async () => {
+  const response = await fetch(`${baseUrl}/api/analyze`);
+  assert.equal(response.status, 405);
+});
+
+test('analyze: full happy path through a stubbed upstream provider', async () => {
+  const { stub, url } = await stubUpstream((request, response, body) => {
+    assert.equal(request.url, '/chat/completions');
+    assert.equal(request.headers.authorization, 'Bearer test-key');
+    const payload = JSON.parse(body);
+    assert.equal(payload.model, 'test/vision-model');
+    const content = payload.messages[0].content;
+    assert.equal(content[0].type, 'text');
+    assert.match(content[0].text, /color-vision deficiencies/);
+    assert.equal(content[1].type, 'image_url');
+    assert.match(content[1].image_url.url, /^data:image\/png;base64,/);
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(completion('```json\n' + JSON.stringify(CANNED_ANALYSIS) + '\n```'));
+  });
+  try {
+    await withAiEnv({
+      CHARTSAFE_AI_KEY: 'test-key',
+      CHARTSAFE_AI_BASE: url,
+      CHARTSAFE_AI_MODEL: 'test/vision-model'
+    }, async () => {
+      const response = await fetch(`${baseUrl}/api/analyze`, {
+        method: 'POST',
+        headers: { Origin: 'http://localhost:5500' },
+        body: multipartUpload(samplePng())
+      });
+      assert.equal(response.status, 200);
+      const payload = await response.json();
+      assert.equal(payload.model, 'test/vision-model');
+      assert.equal(payload.analysis.chart_type, 'bar');
+      assert.match(payload.analysis.summary, /red and green/);
+      /* The validator must have coerced the bad severity and dropped junk. */
+      assert.equal(payload.analysis.findings.length, 2);
+      assert.ok(payload.analysis.findings.every(f => ['high', 'medium', 'low'].includes(f.severity)));
+      assert.ok(payload.analysis.findings.every(f => f.issue.length <= 500));
+      assert.equal(payload.analysis.findings[1].severity, 'medium');
+      assert.equal(payload.analysis.findings[1].where, '');
+      assert.equal(payload.analysis.color_series.length, 2);
+      assert.equal(payload.analysis.uncertainty, 'Cannot read exact values.');
+    });
+  } finally {
+    await new Promise(resolve => stub.close(resolve));
+  }
+});
+
+test('analyze: rejects non-PNG uploads before calling the provider', async () => {
+  const { stub, url } = await stubUpstream(() => { throw new Error('upstream must not be called'); });
+  try {
+    await withAiEnv({ CHARTSAFE_AI_KEY: 'k', CHARTSAFE_AI_BASE: url }, async () => {
+      const response = await fetch(`${baseUrl}/api/analyze`, {
+        method: 'POST',
+        headers: { Origin: 'http://localhost:5500' },
+        body: multipartUpload(Buffer.from('not a png at all'), { type: 'image/png' })
+      });
+      assert.equal(response.status, 400);
+      assert.match((await response.json()).error, /not a valid PNG/);
+    });
+  } finally {
+    await new Promise(resolve => stub.close(resolve));
+  }
+});
+
+test('analyze: upstream failures surface as honest 502 errors', async () => {
+  const cases = [
+    { status: 500, expect: /HTTP 500/ },
+    { status: 401, expect: /rejected the configured key/ },
+    /* Upstream rate limits pass through as 429 — honest, not masked as 502. */
+    { status: 429, expectedStatus: 429, expect: /rate-limiting/ },
+    { status: 200, body: completion('I cannot answer that.'), expect: /did not contain a usable analysis/ },
+    { status: 200, body: completion('{"summary": ""}'), expect: /did not contain a usable analysis/ },
+    { status: 200, body: 'not json at all', expect: /malformed response/ }
+  ];
+  for (const scenario of cases) {
+    const { stub, url } = await stubUpstream((request, response) => {
+      response.writeHead(scenario.status, { 'Content-Type': 'application/json' });
+      response.end(scenario.body || JSON.stringify({ error: 'upstream broke' }));
+    });
+    try {
+      await withAiEnv({ CHARTSAFE_AI_KEY: 'k', CHARTSAFE_AI_BASE: url }, async () => {
+        const response = await fetch(`${baseUrl}/api/analyze`, {
+          method: 'POST',
+          headers: { Origin: 'http://localhost:5500' },
+          body: multipartUpload(samplePng())
+        });
+        assert.equal(response.status, scenario.expectedStatus || 502, `scenario ${JSON.stringify(scenario.status)}`);
+        assert.match((await response.json()).error, scenario.expect);
+      });
+    } finally {
+      await new Promise(resolve => stub.close(resolve));
+    }
+  }
+});
+
+test('analyze: CORS preflight works for the analyze route', async () => {
+  const preflight = await fetch(`${baseUrl}/api/analyze`, {
+    method: 'OPTIONS',
+    headers: { Origin: 'http://localhost:5500', 'Access-Control-Request-Method': 'POST' }
+  });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get('access-control-allow-origin'), 'http://localhost:5500');
+});
+
+test('downscalePng preserves aspect ratio and uniform colors', () => {
+  const png = new PNG({ width: 2400, height: 1200 });
+  for (let y = 0; y < 1200; y++) {
+    for (let x = 0; x < 2400; x++) {
+      const i = (y * 2400 + x) * 4;
+      if (x < 1200) png.data.set([220, 30, 30, 255], i);
+      else png.data.set([255, 255, 255, 255], i);
+    }
+  }
+  const out = downscalePng(PNG.sync.read(PNG.sync.write(png)));
+  assert.ok(Math.max(out.width, out.height) <= 1024);
+  assert.equal(Math.round(out.width / out.height), 2);
+  /* Uniform regions keep their color through the box average. */
+  const left = [...out.data.subarray(0, 4)];
+  const right = [...out.data.subarray((out.width - 1) * 4, (out.width - 1) * 4 + 4)];
+  assert.ok(Math.abs(left[0] - 220) <= 2 && Math.abs(left[1] - 30) <= 2, `left=${left}`);
+  assert.deepEqual(right, [255, 255, 255, 255]);
+
+  const small = PNG.sync.read(samplePng());
+  assert.equal(downscalePng(small), small, 'small images must pass through untouched');
+});
+
+test('validateAnalysis drops junk and refuses empty payloads', () => {
+  assert.equal(validateAnalysis(null), null);
+  assert.equal(validateAnalysis('string'), null);
+  assert.equal(validateAnalysis({ summary: '' }), null);
+  const good = validateAnalysis(CANNED_ANALYSIS);
+  assert.equal(good.findings.length, 2);
+  assert.equal(good.findings[1].severity, 'medium');
+  assert.equal(good.findings[1].where, '');
+  assert.equal(good.color_series.length, 2);
+});
+
+test('extractJsonFromModelReply tolerates fences and prose', () => {
+  const payload = { summary: 'ok' };
+  assert.deepEqual(extractJsonFromModelReply('```json\n' + JSON.stringify(payload) + '\n```'), payload);
+  assert.deepEqual(extractJsonFromModelReply('Sure! ' + JSON.stringify(payload)), payload);
+  assert.deepEqual(extractJsonFromModelReply(JSON.stringify(payload)), payload);
+  assert.equal(extractJsonFromModelReply('no json here'), null);
 });

@@ -15,6 +15,37 @@ const CHROMA_THRESHOLD = 48;
 const CLUSTER_SEPARATION = 76;
 const COLOR_MATCH_DISTANCE = 170;
 const ACCESSIBLE_PALETTE = ['#0072B2', '#E69F00', '#009E73', '#D55E00', '#CC79A7', '#56B4E9'];
+
+/* Loads backend/.env (gitignored) so demo credentials never live in code.
+   Lines are KEY=VALUE; comments and quotes are tolerated. */
+function loadDotEnv() {
+  try {
+    const raw = fs.readFileSync(path.join(__dirname, '.env'), 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+      if (!match) continue;
+      const value = match[2].replace(/^["']|["']$/g, '');
+      if (!(match[1] in process.env)) process.env[match[1]] = value;
+    }
+  } catch { /* no .env — environment-only configuration */ }
+}
+loadDotEnv();
+
+/* AI analysis provider: any OpenAI-compatible chat/completions endpoint that
+   accepts image_url content. Defaults to NVIDIA NIM (build.nvidia.com keys).
+   Verified-working free alternative (tested 2026-10): OpenRouter serving
+   NVIDIA's own vision model — set CHARTSAFE_AI_KEY/BASE/MODEL accordingly.
+   Read per request (never cached) so tests and operators can retarget the
+   provider without restarting. The key is never committed, never logged. */
+function aiConfig() {
+  return {
+    key: process.env.CHARTSAFE_AI_KEY || '',
+    base: (process.env.CHARTSAFE_AI_BASE || 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, ''),
+    model: process.env.CHARTSAFE_AI_MODEL || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+    timeoutMs: Number(process.env.CHARTSAFE_AI_TIMEOUT_MS || 90_000)
+  };
+}
+const AI_MAX_IMAGE_DIMENSION = 1024;
 const STATIC_FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
@@ -229,6 +260,213 @@ function recolorPng(buffer) {
   return { png: PNG.sync.write(recolored), report: buildReport(clusters, assignment) };
 }
 
+/* Deterministic box-average downscale (no dependencies, integer math). Used
+   before sending a chart to the AI provider so huge uploads cannot burn
+   quota or latency. Aspect ratio is preserved; small images are untouched. */
+function downscalePng(png, maxDimension = AI_MAX_IMAGE_DIMENSION) {
+  const scale = Math.min(1, maxDimension / Math.max(png.width, png.height));
+  if (scale >= 1) return png;
+  const width = Math.max(1, Math.floor(png.width * scale));
+  const height = Math.max(1, Math.floor(png.height * scale));
+  const out = new PNG({ width, height });
+  for (let y = 0; y < height; y++) {
+    const sy0 = Math.floor((y * png.height) / height);
+    const sy1 = Math.max(sy0 + 1, Math.floor(((y + 1) * png.height) / height));
+    for (let x = 0; x < width; x++) {
+      const sx0 = Math.floor((x * png.width) / width);
+      const sx1 = Math.max(sx0 + 1, Math.floor(((x + 1) * png.width) / width));
+      let r = 0, g = 0, b = 0, a = 0, samples = 0;
+      for (let sy = sy0; sy < sy1; sy++) {
+        for (let sx = sx0; sx < sx1; sx++) {
+          const i = (sy * png.width + sx) * 4;
+          const alpha = png.data[i + 3];
+          /* Weight semi/fully transparent pixels less so a chart on a huge
+             transparent canvas is not washed out by empty pixels. */
+          const weight = alpha === 0 ? 0 : alpha < 128 ? 0.5 : 1;
+          r += png.data[i] * weight;
+          g += png.data[i + 1] * weight;
+          b += png.data[i + 2] * weight;
+          a += alpha;
+          samples += weight;
+        }
+      }
+      const o = (y * width + x) * 4;
+      if (samples > 0) {
+        out.data[o] = Math.round(r / samples);
+        out.data[o + 1] = Math.round(g / samples);
+        out.data[o + 2] = Math.round(b / samples);
+      }
+      out.data[o + 3] = Math.min(255, Math.round(a / ((sy1 - sy0) * (sx1 - sx0))));
+    }
+  }
+  return out;
+}
+
+/* The analysis contract the model must answer with. Kept deliberately small
+   so small vision models can comply. Everything is validated after. */
+const ANALYSIS_PROMPT = `You are a chart accessibility reviewer. Analyze the attached chart image for people with color-vision deficiencies (deuteranopia, protanopia, tritanopia).
+Answer ONLY with a JSON object, no prose, using exactly this schema:
+{
+  "chart_type": "bar" | "line" | "pie" | "scatter" | "mixed" | "other" | "unclear",
+  "summary": "1-2 sentences describing the chart and its overall color accessibility.",
+  "findings": [
+    { "severity": "high" | "medium" | "low",
+      "issue": "the accessibility problem, one sentence",
+      "where": "which part of the chart",
+      "suggestion": "concrete change to make, one sentence" }
+  ],
+  "color_series": [ { "label": "legend/series name if readable, else a short description", "color": "best-guess color word like red, blue, #RRGGBB" } ],
+  "uncertainty": "what you could not determine about this image, one sentence"
+}
+If you cannot read the chart, say so in "summary", use chart_type "unclear", and return an empty findings array. Do not invent values, numbers, or series you cannot see.`;
+
+const SEVERITIES = new Set(['high', 'medium', 'low']);
+
+/* Validates and normalizes the model's parsed JSON. Unknown fields are
+   dropped; malformed entries are skipped rather than trusted. Returns null
+   when the payload is not usable at all. */
+function validateAnalysis(payload) {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return null;
+  const chartType = typeof payload.chart_type === 'string' ? payload.chart_type : 'unclear';
+  const summary = typeof payload.summary === 'string' ? payload.summary : '';
+  if (!summary) return null;
+
+  const findings = [];
+  if (Array.isArray(payload.findings)) {
+    for (const entry of payload.findings) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const issue = typeof entry.issue === 'string' ? entry.issue : '';
+      if (!issue) continue;
+      findings.push({
+        severity: SEVERITIES.has(entry.severity) ? entry.severity : 'medium',
+        issue: issue.slice(0, 500),
+        where: typeof entry.where === 'string' ? entry.where.slice(0, 200) : '',
+        suggestion: typeof entry.suggestion === 'string' ? entry.suggestion.slice(0, 500) : ''
+      });
+    }
+  }
+
+  const colorSeries = [];
+  if (Array.isArray(payload.color_series)) {
+    for (const entry of payload.color_series) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const color = typeof entry.color === 'string' ? entry.color.slice(0, 40) : '';
+      if (!color) continue;
+      colorSeries.push({
+        label: typeof entry.label === 'string' ? entry.label.slice(0, 120) : '',
+        color
+      });
+    }
+  }
+
+  return {
+    chart_type: chartType.slice(0, 20),
+    summary: summary.slice(0, 1000),
+    findings: findings.slice(0, 12),
+    color_series: colorSeries.slice(0, 12),
+    uncertainty: typeof payload.uncertainty === 'string' ? payload.uncertainty.slice(0, 500) : ''
+  };
+}
+
+/* Extracts the first JSON object from a model reply, tolerating the common
+   ```json fences and stray prose that small models add. */
+function extractJsonFromModelReply(text) {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fenced ? fenced[1] : text;
+  const start = body.indexOf('{');
+  const end = body.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    return JSON.parse(body.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+/* Calls the configured OpenAI-compatible vision model with the chart PNG.
+   Only the model name and upstream status codes are ever logged. */
+async function analyzeChart(buffer) {
+  const { key: AI_KEY, base: AI_BASE, model: AI_MODEL, timeoutMs: AI_TIMEOUT_MS } = aiConfig();
+  if (!AI_KEY) {
+    throw new HttpError(503, 'AI analysis is not configured. Set CHARTSAFE_AI_KEY (see README) and restart the backend.');
+  }
+  if (
+    buffer.length < 24 ||
+    !buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+    buffer.readUInt32BE(8) !== 13 ||
+    buffer.toString('ascii', 12, 16) !== 'IHDR'
+  ) {
+    throw new HttpError(400, 'The uploaded file is not a valid PNG.');
+  }
+  const headerWidth = buffer.readUInt32BE(16);
+  const headerHeight = buffer.readUInt32BE(20);
+  if (!headerWidth || !headerHeight || headerWidth * headerHeight > MAX_PIXELS ||
+      headerWidth > MAX_DIMENSION || headerHeight > MAX_DIMENSION) {
+    throw new HttpError(413, 'Choose a PNG up to 8 megapixels and 8192 pixels per side.');
+  }
+  let source;
+  try {
+    source = PNG.sync.read(buffer);
+  } catch {
+    throw new HttpError(400, 'The uploaded file is not a valid PNG.');
+  }
+  const image = downscalePng(source);
+  const encoded = PNG.sync.write(image).toString('base64');
+
+  let response;
+  try {
+    response = await fetch(`${AI_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${AI_KEY}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: ANALYSIS_PROMPT },
+            { type: 'image_url', image_url: { url: `data:image/png;base64,${encoded}` } }
+          ]
+        }],
+        max_tokens: 1200,
+        temperature: 0.2
+      }),
+      signal: AbortSignal.timeout(AI_TIMEOUT_MS)
+    });
+  } catch (error) {
+    if (error && error.name === 'TimeoutError') {
+      throw new HttpError(504, 'The AI provider timed out. Try again.');
+    }
+    throw new HttpError(502, `Could not reach the AI provider (${error && error.message ? error.message : 'network error'}).`);
+  }
+  if (!response.ok) {
+    console.error(`[chartsafe] AI provider returned HTTP ${response.status} for model ${AI_MODEL}`);
+    if (response.status === 401 || response.status === 403) {
+      throw new HttpError(502, 'The AI provider rejected the configured key. Check CHARTSAFE_AI_KEY.');
+    }
+    if (response.status === 429) {
+      throw new HttpError(429, 'The AI provider is rate-limiting requests. Wait a moment and try again.');
+    }
+    throw new HttpError(502, `The AI provider returned HTTP ${response.status}.`);
+  }
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new HttpError(502, 'The AI provider returned a malformed response.');
+  }
+  const content = data && data.choices && data.choices[0] && data.choices[0].message
+    ? data.choices[0].message.content : '';
+  const analysis = validateAnalysis(extractJsonFromModelReply(String(content || '')));
+  if (!analysis) {
+    throw new HttpError(502, 'The AI reply did not contain a usable analysis. Try again or switch CHARTSAFE_AI_MODEL.');
+  }
+  return { model: AI_MODEL, analysis };
+}
+
 function readUploadedPng(request) {
   return new Promise((resolve, reject) => {
     let upload;
@@ -344,12 +582,32 @@ function createServer(allowedOrigins = new Set(
       sendJson(response, 200, { status: 'ok' });
       return;
     }
-    if (pathname !== '/api/recolor') {
+    if (pathname !== '/api/recolor' && pathname !== '/api/analyze') {
       sendJson(response, 404, { error: 'Not found.' });
       return;
     }
     if (request.method !== 'POST') {
       sendJson(response, 405, { error: 'Use POST with a PNG in the image field.' });
+      return;
+    }
+
+    if (pathname === '/api/analyze') {
+      /* The user's chart leaves this machine ONLY on this route, after the
+         frontend has shown an explicit consent dialog. The key never leaves
+         the server; images are processed in memory and not stored. */
+      try {
+        const input = await readUploadedPng(request);
+        if (input.length > MAX_UPLOAD_BYTES) throw new HttpError(413, 'Choose a PNG up to 10 MB.');
+        const result = await analyzeChart(input);
+        sendJson(response, 200, result);
+      } catch (error) {
+        if (!(error instanceof HttpError)) {
+          console.error('[chartsafe] analyze request failed:', error && error.message ? error.message : error);
+        }
+        sendJson(response, error instanceof HttpError ? error.statusCode : 500, {
+          error: error instanceof HttpError ? error.message : 'The analysis request failed.'
+        });
+      }
       return;
     }
 
@@ -394,7 +652,21 @@ if (require.main === module) {
   const server = createServer();
   server.listen(PORT, HOST, () => {
     console.log(`ChartSafe recoloring API listening at http://${HOST}:${PORT}`);
+    const { key, model, base } = aiConfig();
+    console.log(key
+      ? `AI analysis enabled: ${model} via ${base}`
+      : 'AI analysis disabled — set CHARTSAFE_AI_KEY (see README) to enable /api/analyze');
   });
 }
 
-module.exports = { ACCESSIBLE_PALETTE, assignPaletteIndices, createServer, recolorPng, recolorPngBuffer };
+module.exports = {
+  ACCESSIBLE_PALETTE,
+  analyzeChart,
+  assignPaletteIndices,
+  createServer,
+  downscalePng,
+  extractJsonFromModelReply,
+  recolorPng,
+  recolorPngBuffer,
+  validateAnalysis
+};

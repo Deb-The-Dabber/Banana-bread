@@ -250,6 +250,54 @@ test('auto-generation is wired into the chart load flow', () => {
   assert.match(script, /URL\.createObjectURL\(state\.corrected\.blob\)/);
 });
 
+test('escapeHtml neutralizes markup from untrusted model output', () => {
+  const context = runIsolated(`${extractFunction(script, 'escapeHtml')}`);
+  const escape = context.escapeHtml;
+  const E = c => '\x26' + c + ';';  /* build entities without literal & */
+  const scripty = '<' + 'script>alert("x")</' + 'script>';
+  const escapedScripty = E('lt') + 'script' + E('gt') + 'alert(' + E('quot') + 'x' + E('quot') + ')' + E('lt') + '/script' + E('gt');
+  assert.equal(escape(scripty), escapedScripty);
+  assert.equal(escape("a & b 'c'"), 'a ' + E('amp') + ' b ' + E('#39') + 'c' + E('#39'));
+  assert.equal(escape('plain text'), 'plain text');
+  assert.notEqual(escape(scripty), scripty);
+});
+
+test('measured color checks flag confusable pairs and clear the safe palette', () => {
+  const context = vm.createContext({});
+  /* CVD_CHECKS depends on ChartSafeSimulation; provide both in one script. */
+  vm.runInContext(`${extractSimulationModule(script)}\n${extractModule(script, 'const CVD_CHECKS = (() => {')}\nCVD_CHECKS`, context);
+  const checks = vm.runInContext('CVD_CHECKS', context);
+  const { pairReport, deltaE, LIKELY_ALIKE, MAY_LOOK_SIMILAR } = checks;
+  assert.ok(deltaE, 'module exports deltaE');
+
+  /* Realistic red/green chart pair collapses under deuteranopia. */
+  const confusable = pairReport([[220, 30, 30], [30, 160, 40]]);
+  assert.equal(confusable.pairs.length, 1);
+  assert.ok(confusable.pairs[0].minDeltaE < LIKELY_ALIKE, `expected < ${LIKELY_ALIKE}, got ${confusable.pairs[0].minDeltaE}`);
+  assert.equal(confusable.pairs[0].minMode, 'deuteranopia');
+
+  /* Okabe-Ito blue/orange stays clearly different everywhere. */
+  const safe = pairReport([[0, 114, 178], [230, 159, 0]]);
+  assert.ok(safe.pairs[0].minDeltaE > MAY_LOOK_SIMILAR, `expected > ${MAY_LOOK_SIMILAR}, got ${safe.pairs[0].minDeltaE}`);
+
+  /* Normal vision distinguishes red and green (sanity of the metric itself). */
+  assert.ok(deltaE([255, 0, 0], [0, 255, 0]) > MAY_LOOK_SIMILAR);
+});
+
+test('AI review UI is consent-gated and statically honest', () => {
+  assert.match(html, /<dialog id="ai-consent"/);
+  assert.match(html, /id="analyze"/);
+  assert.match(html, /Nothing is uploaded until you approve/);
+  assert.match(html, /AI findings are model interpretations, not verified facts/);
+  /* Static hosting must get an explanation, not a dead button. */
+  assert.match(script, /location\.hostname\.endsWith\('\.github\.io'\)/);
+  assert.match(script, /cannot call the AI provider/);
+  /* No key material may ever appear in the shipped page. */
+  for (const secret of ['nvapi-', 'sk-or-v1', 'Bearer ', 'CHARTSAFE_AI_KEY=']) {
+    assert.ok(!html.includes(secret), `docs/index.html must not contain ${secret}`);
+  }
+});
+
 test('frontend assets are consolidated: no orphaned duplicates, legacy route redirects', () => {
   const docs = path.join(__dirname, '..', '..', 'docs');
   for (const gone of ['app.js', 'simulation.js', 'styles.css']) {

@@ -1,12 +1,14 @@
 # ChartSafe
 
 ChartSafe is a small tool for checking how a PNG chart reads for people with
-color-vision deficiencies. Everything runs in your browser: load a PNG,
+color-vision deficiencies. Everything core runs in your browser: load a PNG,
 get an automatically generated corrected version (dominant colors remapped
 to a colorblind-safe palette), preview both under approximate
 deuteranopia/protanopia/tritanopia simulations, and download the corrected
 PNG. The **Original** box always keeps its true colors; the selected vision
-view is applied only to the right preview.
+view is applied only to the right preview. Optionally, a consent-gated
+**AI chart review** adds model-generated findings next to pixel-measured
+color-pair checks.
 
 The page is fully client-side — decoding, recoloring, and the download are
 all local, no image is ever uploaded, and it makes no network requests.
@@ -105,6 +107,53 @@ Same-origin loopback requests need no configuration. Allowed origins get
 `Access-Control-Expose-Headers: X-ChartSafe-Report` so cross-origin scripts
 can read the report header. Everything else gets 403.
 
+## AI chart review (optional, consent-gated)
+
+The studio can send your chart to a vision-capable AI model for a
+structured accessibility review: chart type, summary, findings with
+severity/suggestions, the series colors the model reads, and its stated
+uncertainty. The flow is consent-gated — a dialog explains exactly what
+will be uploaded before anything leaves the machine, and canceling sends
+nothing. Alongside the model's findings, ChartSafe shows **measured
+checks** computed deterministically from the image's pixels: every
+detected color pair is judged by CIELAB ΔE after applying each color-vision
+simulation, so confusable pairs are flagged with numbers, not opinions.
+AI findings are interpretations; the measured checks are facts.
+
+The AI request is made only to a ChartSafe backend running on your machine
+(`npm start`), which holds the provider key — the browser never sees it.
+The public GitHub Pages page shows an honest "run the backend to enable
+this" explanation instead of a dead button.
+
+### Provider configuration
+
+Copy `backend/.env.example` to `backend/.env` (gitignored) and set:
+
+- `CHARTSAFE_AI_KEY` — provider API key (required to enable `/api/analyze`)
+- `CHARTSAFE_AI_BASE` — OpenAI-compatible base URL
+- `CHARTSAFE_AI_MODEL` — a vision-capable chat model
+
+Two verified configurations:
+
+| Option | Base | Model | Cost |
+|--------|------|-------|------|
+| NVIDIA NIM (default) | `https://integrate.api.nvidia.com/v1` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | free `nvapi-` key from build.nvidia.com |
+| OpenRouter (tested 2026-10) | `https://openrouter.ai/api/v1` | same model + `:free` suffix | free tier, rate-limited |
+
+`POST /api/analyze` accepts the same multipart PNG as `/api/recolor`
+(≤ 10 MB, ≤ 8 megapixels; the image is downscaled to ≤ 1024 px before the
+provider call) and returns `{ model, analysis }` with the validated schema
+`{ chart_type, summary, findings: [{severity, issue, where, suggestion}],
+color_series: [{label, color}], uncertainty }`. Unconfigured → 503;
+provider failure → 502/429/504 with an honest message; unusable model
+output → 502. The provider's reply is strictly validated and truncated;
+it is never executed or rendered as HTML.
+
+**Limitations, honestly:** the model can misread charts, hallucinate
+series, or miss real problems — that is why every AI finding ships next to
+pixel-measured checks and the disclaimer. The measured ΔE checks are a
+perceptual heuristic, not a simulation of any individual's vision.
+
 ## How the recoloring works (and what it cannot do)
 
 The same heuristic ships twice — in the page (so it works with no backend)
@@ -146,21 +195,26 @@ Coverage: recoloring behavior (neutral/alpha preservation), dimension and
 upload limits, malformed/truncated/non-PNG input, multipart field errors,
 CORS allowlist + preflight + report-header exposure, report schema and
 determinism, palette-assignment stability, grayscale/16-bit normalization,
-static routes and the legacy redirect, and — by extracting the inline
-script from the shipped `docs/index.html` — the simulation math (against an
-independent transcription of the published formulas), the in-page recolorer
-(byte-identical to the backend algorithm, including on a real chart from
-`BananaHacks/`), the rule that the Original box is never simulated, and the
-absence of any recoloring-service UI. The full UI flow was additionally
-verified in a headless Chromium (upload → automatic generation → vision
-tabs → actual captured download of the corrected PNG, including byte-exact
-constancy of the Original box across all tabs); those browser checks live
-outside the repo and are not part of `npm test`.
+static routes and the legacy redirect, the AI analyze endpoint (503
+unconfigured, stubbed-provider happy path, junk-output rejection, upstream
+error mapping, PNG validation before the provider call, request downscale),
+and — by extracting the inline script from the shipped `docs/index.html` —
+the simulation math (against an independent transcription of the published
+formulas), the in-page recolorer (byte-identical to the backend algorithm,
+including on a real chart), the measured color-pair checks with calibrated
+ΔE thresholds, HTML escaping of model output, the rule that the Original
+box is never simulated, and the consent-gated AI UI. The full UI flow was
+additionally verified in a headless Chromium (upload → automatic
+generation → vision tabs → actual captured download, and the complete
+AI flow: consent dialog, cancel-sends-nothing, findings rendering,
+measured-checks rendering, stale-result clearing, provider-failure
+fallback); those browser checks live outside the repo and are not part of
+`npm test`.
 
 ## Privacy
 
-Images never leave the browser: decoding, simulation, and downloads all
-happen locally, and the page makes no network requests. If you run the
-optional API yourself and send it a PNG, that request transmits the image
-to wherever the API runs — the API processes it in memory and stores
-nothing.
+Images never leave the browser by default: decoding, recoloring, the
+measured ΔE checks, and downloads all happen locally, and the page makes
+no network requests. The optional AI review uploads the chart PNG — only
+after explicit consent — to the configured provider via your local
+backend; the backend processes it in memory and stores nothing.
