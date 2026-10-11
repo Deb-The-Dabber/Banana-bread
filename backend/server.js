@@ -19,9 +19,6 @@ const STATIC_FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
   '/landing.html': ['landing.html', 'text/html; charset=utf-8'],
-  '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
-  '/simulation.js': ['simulation.js', 'text/javascript; charset=utf-8'],
-  '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
   '/chartsafe-v2-html.html': ['chartsafe-v2-html.html', 'text/html; charset=utf-8']
 };
 
@@ -45,6 +42,53 @@ function colorDistanceSquared(a, b) {
   const dg = a[1] - b[1];
   const db = a[2] - b[2];
   return dr * dr + dg * dg + db * db;
+}
+
+/* Weighted sRGB distance ("redmean"), a cheap perceptual proxy.
+   Used only to decide which palette entry each detected color maps to. */
+function redmeanDistanceSquared(a, b) {
+  const rm = (a[0] + b[0]) / 2;
+  const dr = a[0] - b[0];
+  const dg = a[1] - b[1];
+  const db = a[2] - b[2];
+  return (2 + rm / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rm) / 256) * db * db;
+}
+
+/* Assign each detected cluster a distinct palette entry, minimizing total
+   redmean distance. The search visits clusters in color order (not pixel-count
+   order), so the mapping depends only on the set of detected colors: the same
+   chart colors get the same palette entries even when unrelated regions grow
+   or shrink, and a red cluster maps to the reddish palette entry, not
+   whichever slot its pixel count happens to win. */
+function assignPaletteIndices(clusters, palette) {
+  const visitOrder = clusters
+    .map((cluster, index) => ({ color: cluster.color, index }))
+    .sort((a, b) => a.color[0] - b.color[0] || a.color[1] - b.color[1] || a.color[2] - b.color[2] || a.index - b.index)
+    .map(entry => entry.index);
+  const used = new Array(palette.length).fill(false);
+  const current = new Array(clusters.length);
+  let best = null;
+  let bestCost = Infinity;
+  const search = (step, cost) => {
+    if (cost >= bestCost) return;
+    if (step === visitOrder.length) {
+      bestCost = cost;
+      best = current.slice();
+      return;
+    }
+    const clusterIndex = visitOrder[step];
+    for (let paletteIndex = 0; paletteIndex < palette.length; paletteIndex++) {
+      if (used[paletteIndex]) continue;
+      const stepCost = redmeanDistanceSquared(clusters[clusterIndex].color, palette[paletteIndex]);
+      if (cost + stepCost >= bestCost) continue;
+      used[paletteIndex] = true;
+      current[clusterIndex] = paletteIndex;
+      search(step + 1, cost + stepCost);
+      used[paletteIndex] = false;
+    }
+  };
+  search(0, 0);
+  return best;
 }
 
 function isChromatic(r, g, b) {
@@ -103,6 +147,31 @@ function detectSeriesColors(pixels) {
 }
 
 function recolorPngBuffer(buffer) {
+  const { png } = recolorPng(buffer);
+  return png;
+}
+
+/* X-ChartSafe-Report schema (JSON, version 1):
+   { "version": 1,
+     "color_groups": <int 0..6, number of dominant chromatic clusters detected>,
+     "mapping": [{ "from": [r, g, b], "to": "#rrggbb" }, ...],
+     "note": <string> }
+   Every value is computed from the actual processing of this request.
+   This is factual bookkeeping about a pixel heuristic — it is NOT an
+   accessibility score or certification. */
+function buildReport(clusters, assignment) {
+  return {
+    version: 1,
+    color_groups: clusters.length,
+    mapping: clusters.map((cluster, index) => ({
+      from: cluster.color.map(Math.round),
+      to: ACCESSIBLE_PALETTE[assignment[index]]
+    })),
+    note: 'Heuristic dominant-color mapping from pixel statistics; not an accessibility certification.'
+  };
+}
+
+function recolorPng(buffer) {
   if (
     buffer.length < 24 ||
     !buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
@@ -123,8 +192,12 @@ function recolorPngBuffer(buffer) {
   if (!width || !height || width * height > MAX_PIXELS || width > MAX_DIMENSION || height > MAX_DIMENSION) {
     throw new HttpError(413, 'Choose a PNG up to 8 megapixels and 8192 pixels per side.');
   }
+  if (data.length !== width * height * 4) {
+    throw new HttpError(400, 'The uploaded PNG uses an unsupported pixel layout. Export it as an 8-bit or 16-bit RGBA PNG and try again.');
+  }
 
   const clusters = detectSeriesColors(data);
+  const assignment = assignPaletteIndices(clusters, ACCESSIBLE_PALETTE.map(colorFromHex));
   const recolored = new PNG({ width, height });
   recolored.data.set(data);
   const palette = ACCESSIBLE_PALETTE.map(colorFromHex);
@@ -147,13 +220,13 @@ function recolorPngBuffer(buffer) {
     if (nearest < 0 || nearestDistance >= COLOR_MATCH_DISTANCE ** 2) continue;
 
     const confidence = Math.max(0, 1 - Math.sqrt(nearestDistance) / COLOR_MATCH_DISTANCE);
-    const target = palette[nearest];
+    const target = palette[assignment[nearest]];
     recolored.data[i] = Math.round(r + (target[0] - r) * confidence);
     recolored.data[i + 1] = Math.round(g + (target[1] - g) * confidence);
     recolored.data[i + 2] = Math.round(b + (target[2] - b) * confidence);
   }
 
-  return PNG.sync.write(recolored);
+  return { png: PNG.sync.write(recolored), report: buildReport(clusters, assignment) };
 }
 
 function readUploadedPng(request) {
@@ -222,7 +295,7 @@ function createServer(allowedOrigins = new Set(
     .map(origin => origin.trim())
     .filter(Boolean)
 )) {
-  return http.createServer(async (request, response) => {
+  const server = http.createServer(async (request, response) => {
     const pathname = new URL(request.url, 'http://127.0.0.1').pathname;
     const staticFile = STATIC_FILES[pathname];
     if (request.method === 'GET' && pathname === '/animejs.js') {
@@ -251,6 +324,9 @@ function createServer(allowedOrigins = new Set(
       response.setHeader('Vary', 'Origin');
       response.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
       response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      /* The frontend reads the X-ChartSafe-Report header on recolor responses;
+         without this line browsers hide it from cross-origin JavaScript. */
+      response.setHeader('Access-Control-Expose-Headers', 'X-ChartSafe-Report');
       if (request.headers['access-control-request-private-network'] === 'true') {
         response.setHeader('Access-Control-Allow-Private-Network', 'true');
       }
@@ -280,25 +356,38 @@ function createServer(allowedOrigins = new Set(
     try {
       const input = await readUploadedPng(request);
       if (input.length > MAX_UPLOAD_BYTES) throw new HttpError(413, 'Choose a PNG up to 10 MB.');
-      let output;
+      let result;
       try {
-        output = recolorPngBuffer(input);
+        result = recolorPng(input);
       } catch (error) {
         if (error instanceof HttpError) throw error;
+        /* Unexpected decoder failures are operational errors worth logging;
+           only the error message is logged, never image data. */
+        console.error('[chartsafe] recolor failed:', error && error.message ? error.message : error);
         throw new HttpError(400, 'The uploaded file is not a valid PNG.');
       }
       response.writeHead(200, {
         'Content-Type': 'image/png',
-        'Content-Length': output.length,
-        'Cache-Control': 'no-store'
+        'Content-Length': result.png.length,
+        'Cache-Control': 'no-store',
+        'X-ChartSafe-Report': JSON.stringify(result.report)
       });
-      response.end(output);
+      response.end(result.png);
     } catch (error) {
+      if (!(error instanceof HttpError)) {
+        console.error('[chartsafe] request failed:', error && error.message ? error.message : error);
+      }
       sendJson(response, error instanceof HttpError ? error.statusCode : 500, {
         error: error instanceof HttpError ? error.message : 'The recoloring request failed.'
       });
     }
   });
+  /* Deterministic socket limits: a client that opens a connection but never
+     finishes headers or a body cannot hold a socket beyond these bounds.
+     requestTimeout (120s) comfortably exceeds the frontend's 90s abort. */
+  server.headersTimeout = 60_000;
+  server.requestTimeout = 120_000;
+  return server;
 }
 
 if (require.main === module) {
@@ -308,4 +397,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { ACCESSIBLE_PALETTE, createServer, recolorPngBuffer };
+module.exports = { ACCESSIBLE_PALETTE, assignPaletteIndices, createServer, recolorPng, recolorPngBuffer };
