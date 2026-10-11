@@ -385,7 +385,7 @@ test('serves the app at the root and a redirect at the legacy standalone route',
   assert.equal(app.status, 200);
   const appHtml = await app.text();
   assert.match(appHtml, /A clearer picture\.<br><em>For everyone\./);
-  assert.match(appHtml, /id="fix"/);
+  assert.match(appHtml, /id="download"/);
 
   const legacy = await fetch(`${baseUrl}/chartsafe-v2-html.html`);
   assert.equal(legacy.status, 200);

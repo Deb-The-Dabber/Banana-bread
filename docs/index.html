@@ -118,27 +118,25 @@ footer{border-top:1px solid var(--line);padding:22px 48px;display:flex;justify-c
 <div class="step-label"><span>01</span> YOUR CHART</div><h2>Start with an image</h2><p class="muted small">Clean PNG bar and line charts work best.</p>
 <label class="dropzone" id="dropzone"><span class="upload-icon" aria-hidden="true">↑</span><strong>Choose a chart</strong><span>or drop a PNG here</span><span class="file-limit">Up to 10 MB · 8 megapixels</span><input id="upload" type="file" accept="image/png" aria-label="Upload original PNG chart"></label>
 <button id="sample" class="text-button">Try the sample chart <span aria-hidden="true">↗</span></button>
-<div class="divider"></div><div class="step-label"><span>02</span> CORRECTED VERSION</div><p class="muted small">Click Recolor to run ChartSafe, or load a corrected PNG. Add your chart in step 01 first.</p>
-<button id="fix" class="primary" disabled>Recolor chart <span aria-hidden="true">→</span></button>
+<div class="divider"></div><div class="step-label"><span>02</span> CORRECTED VERSION</div><p class="muted small">Load a corrected PNG to compare it with your chart. Add your chart in step 01 first.</p>
 <label class="secondary file-button">Load corrected PNG<input id="corrected-upload" type="file" accept="image/png" disabled aria-label="Upload corrected PNG chart"></label>
-<details class="settings"><summary>Connect recoloring service</summary><label for="endpoint">API endpoint</label><input id="endpoint" type="url" placeholder="http://127.0.0.1:8000/api/recolor" spellcheck="false"><p class="small muted">Clicking Recolor sends your original PNG to this address. Use a service you trust.</p></details>
-<div class="privacy"><span aria-hidden="true">◉</span><p>Previews stay in your browser. Images are sent only when you use the recoloring service.</p></div>
+<div class="privacy"><span aria-hidden="true">◉</span><p>Everything stays in your browser. No image is ever uploaded.</p></div>
 </aside>
 <div class="studio">
 <div class="studio-heading"><div><div class="step-label"><span>03</span> COMPARE & EXPLORE</div><h2>Your chart, through another lens</h2></div><span id="source-badge" class="badge">No image loaded</span></div>
 <fieldset class="vision"><legend>Simulated color vision</legend><div class="vision-options">
 <label><input type="radio" name="vision" value="normal" checked><span>Normal vision</span></label><label><input type="radio" name="vision" value="deuteranopia"><span>Deuteranopia</span></label><label><input type="radio" name="vision" value="protanopia"><span>Protanopia</span></label><label><input type="radio" name="vision" value="tritanopia"><span>Tritanopia*</span></label>
 </div></fieldset>
-<p id="vision-note" class="view-note">Both panels show the images in their true colors.</p>
+<p id="vision-note" class="view-note">The original keeps its true colors; the right preview shows the selected view.</p>
 <div class="comparison">
 <article class="chart-card"><div class="card-title"><h3><span class="dot original"></span><span id="before-title">Original</span></h3><span id="original-meta">Awaiting PNG</span></div><div class="canvas-wrap"><canvas id="before" hidden role="img" aria-label="Original chart preview"></canvas><div class="empty" id="before-empty"><span aria-hidden="true">▥</span><strong>Your chart goes here</strong><p>Upload an image or try the sample.</p></div></div></article>
-<article id="corrected-card" class="chart-card"><div class="card-title"><h3><span class="dot corrected"></span><span id="after-title">Recolored</span></h3><span id="corrected-meta">Awaiting result</span></div><div class="canvas-wrap"><canvas id="after" hidden role="img" aria-label="Recolored chart preview"></canvas><div class="empty" id="after-empty"><span aria-hidden="true">▥</span><strong>A new perspective</strong><p>Click Recolor chart or load a corrected PNG.</p></div></div></article>
+<article id="corrected-card" class="chart-card"><div class="card-title"><h3><span class="dot corrected"></span><span id="after-title">Recolored</span></h3><span id="corrected-meta">Awaiting result</span></div><div class="canvas-wrap"><canvas id="after" hidden role="img" aria-label="Recolored chart preview"></canvas><div class="empty" id="after-empty"><span aria-hidden="true">▥</span><strong>A new perspective</strong><p>Load a corrected PNG to compare.</p></div></div></article>
 </div>
 <div id="status" class="status" role="status" aria-live="polite">Ready when you are. Start with your chart or explore the sample.</div>
-<div class="result-footer"><div><strong id="result-title">Compare with confidence</strong><p id="result-note">The recoloring service maps dominant chart colors to a fixed accessible palette. Verify the result in every view.</p></div><button class="download" id="download" disabled>Download corrected PNG <span aria-hidden="true">↓</span></button></div>
+<div class="result-footer"><div><strong id="result-title">Compare with confidence</strong><p id="result-note">Load a corrected PNG to compare it with your chart in every vision view.</p></div><button class="download" id="download" disabled>Download corrected PNG <span aria-hidden="true">↓</span></button></div>
 <p class="simulation-disclaimer">Simulations are approximations and vary from individual experience. *The blue-yellow view uses a severe tritanomaly approximation. A recolored image is not a certification of accessibility.</p>
 </div></section>
-<section id="how-it-works" class="how"><div><div class="eyebrow">SMALL CHANGES. CLEARER STORIES.</div><h2>Built around your chart.</h2></div><article><span>01 / UPLOAD</span><h3>Bring the original</h3><p>A clean PNG keeps the chart’s text, axes, and series easy to inspect.</p></article><article><span>02 / COMPARE</span><h3>Change your perspective</h3><p>Apply the same simulation to both images to compare the colors.</p></article><article><span>03 / EXPORT</span><h3>Take it with you</h3><p>Download the corrected image in its original colors, ready for your slides.</p></article></section>
+<section id="how-it-works" class="how"><div><div class="eyebrow">SMALL CHANGES. CLEARER STORIES.</div><h2>Built around your chart.</h2></div><article><span>01 / UPLOAD</span><h3>Bring the original</h3><p>A clean PNG keeps the chart’s text, axes, and series easy to inspect.</p></article><article><span>02 / COMPARE</span><h3>Change your perspective</h3><p>Switch vision views to preview how the colors may be perceived, while the original keeps its true colors.</p></article><article><span>03 / EXPORT</span><h3>Take it with you</h3><p>Download the corrected image in its original colors, ready for your slides.</p></article></section>
 </main>
 <footer><span class="brand small-brand">ChartSafe</span><span>Made for clearer communication.</span><span>Manish · Deb · Ayush</span></footer>
 <script>
@@ -178,46 +176,16 @@ const ChartSafeSimulation = (() => {
 })();
 
 const $ = id => document.getElementById(id);
-const state = {original:null, corrected:null, mode:'normal', sample:false, revision:0, correctedRevision:0, busy:false, request:null};
+const state = {original:null, corrected:null, mode:'normal', sample:false, revision:0, correctedRevision:0};
 const notes = {
-  normal:'Both panels show the images in their true colors.',
-  deuteranopia:'Both panels show an approximate simulation with absent medium-wavelength (M) cone function. Previews only — uploaded and downloaded files keep their true colors.',
-  protanopia:'Both panels show an approximate simulation with absent long-wavelength (L) cone function. Previews only — uploaded and downloaded files keep their true colors.',
-  tritanopia:'Both panels show an approximate severe blue-yellow deficiency simulation; this model does not precisely represent tritanopia. Previews only — uploaded and downloaded files keep their true colors.'
+  normal:'Both images are shown in their true colors.',
+  deuteranopia:'The original keeps its true colors. The right preview shows an approximate simulation with absent medium-wavelength (M) cone function. Previews only — uploaded and downloaded files are unchanged.',
+  protanopia:'The original keeps its true colors. The right preview shows an approximate simulation with absent long-wavelength (L) cone function. Previews only — uploaded and downloaded files are unchanged.',
+  tritanopia:'The original keeps its true colors. The right preview shows an approximate severe blue-yellow deficiency simulation; this model does not precisely represent tritanopia. Previews only — uploaded and downloaded files are unchanged.'
 };
-/* X-ChartSafe-Report is factual bookkeeping from the recoloring service: how
-   many dominant color groups it detected and what it mapped them to. It is not
-   an accessibility score, so it is validated strictly and rendered as plain
-   facts only; anything unexpected is ignored. */
-function parseReportHeader(value) {
-  if (!value) return null;
-  let report;
-  try { report = JSON.parse(value); } catch { return null; }
-  if (typeof report !== 'object' || report === null || Array.isArray(report)) return null;
-  if (report.version !== 1) return null;
-  if (!Number.isInteger(report.color_groups) || report.color_groups < 0 || report.color_groups > 9) return null;
-  if (report.mapping !== undefined) {
-    if (!Array.isArray(report.mapping) || report.mapping.length !== report.color_groups) return null;
-    for (const entry of report.mapping) {
-      if (typeof entry !== 'object' || entry === null) return null;
-      if (!Array.isArray(entry.from) || entry.from.length !== 3 || !entry.from.every(v => Number.isInteger(v) && v >= 0 && v <= 255)) return null;
-      if (typeof entry.to !== 'string' || !/^#[0-9a-f]{6}$/i.test(entry.to)) return null;
-    }
-  }
-  return report;
-}
-function describeReport(report) {
-  const groups = report.color_groups;
-  const subject = groups === 0
-    ? 'No dominant chart colors were detected, so the image was left unchanged'
-    : `${groups} dominant color group${groups === 1 ? ' was' : 's were'} mapped to the accessible palette`;
-  return `${subject}. This is a pixel-count heuristic — it cannot read chart meaning, so check labels, data, and every vision view yourself.`;
-}
 function status(message, kind='') { $('status').textContent=message; $('status').className='status '+kind; }
 function controls() {
-  $('fix').disabled=!state.original || !$('endpoint').value.trim() || state.busy;
-  $('fix').textContent=state.busy?'Recoloring…':'Recolor chart →';
-  $('corrected-upload').disabled=!state.original || state.busy;
+  $('corrected-upload').disabled=!state.original;
   $('download').disabled=!state.corrected;
   $('source-badge').textContent=state.sample?'Prepared sample':state.original?'Your chart':'No image loaded';
 }
@@ -233,22 +201,21 @@ function renderOne(canvasId, emptyId, item, mode, label) {
 }
 function render() {
   const simulating=state.mode!=='normal';
-  /* The selected vision mode is applied independently to BOTH source images
-     (each simulated from its own untouched pixels), so the comparison is
-     always like-for-like. In Normal mode both panels show true colors, and
-     the recolored panel stays visible in every mode. */
-  renderOne('before','before-empty',state.original,state.mode,'Original chart');
-  renderOne('after','after-empty',state.corrected,state.mode,'Recolored chart');
+  /* The Original box always keeps the true colors. The selected vision view
+     is applied only to the right preview: the corrected image when one is
+     loaded, otherwise the original as a "simulation only" preview. */
+  renderOne('before','before-empty',state.original,'normal','Original chart');
+  renderOne('after','after-empty',state.corrected || (simulating?state.original:null),state.mode,state.corrected?'Recolored chart':'Simulated original chart');
   $('corrected-card').hidden=false;
-  $('before-title').textContent=simulating?'Original · '+modeNames[state.mode]+' (simulated)':'Original';
-  $('after-title').textContent=state.corrected?(simulating?'Recolored · '+modeNames[state.mode]+' (simulated)':'Recolored'):'Recolored';
+  $('before-title').textContent='Original';
+  $('after-title').textContent=simulating?(state.corrected?'Recolored · ':'Simulation · ')+modeNames[state.mode]:'Recolored';
   $('vision-note').textContent=notes[state.mode];
   $('original-meta').textContent=state.original?`${state.original.width} × ${state.original.height}`:'Awaiting PNG';
-  $('corrected-meta').textContent=state.corrected?(state.sample?'Prepared example':'PNG loaded'):'Awaiting result';
+  $('corrected-meta').textContent=state.corrected?(state.sample?'Prepared example':'PNG loaded'):(simulating&&state.original?'Simulation only':'Awaiting result');
   $('result-title').textContent=state.corrected?'Corrected image ready to download':'Compare with confidence';
   $('result-note').textContent=state.corrected
-    ?'Exports the PNG in its true colors. Dominant colors were remapped by a pixel heuristic — verify the result in every view.'
-    :'The recoloring service maps dominant chart colors to a fixed accessible palette. It cannot interpret chart meaning; you stay the judge of labels and data.';
+    ?'Exports the PNG in its true colors. Check labels and data in both images.'
+    :'Load a corrected PNG to compare it with your chart in every vision view.';
   controls();
 }
 async function decodePNG(blob, name='chart.png') {
@@ -265,13 +232,13 @@ async function decodePNG(blob, name='chart.png') {
   } finally { bitmap.close(); }
 }
 function invalidate() {
-  state.revision++; state.correctedRevision++; state.request?.abort(); state.request=null; state.busy=false;
+  state.revision++; state.correctedRevision++;
 }
 async function loadOriginal(file) {
   if (!file) return;
   invalidate();const rev=state.revision;
   state.original=null; state.corrected=null;state.sample=false;render();status('Opening PNG…','busy');
-  try {const item=await decodePNG(file,file.name);if(rev!==state.revision)return;state.original=item;render();status('Chart loaded. Click Recolor chart, or load your own corrected PNG into the Recolored panel.');}
+  try {const item=await decodePNG(file,file.name);if(rev!==state.revision)return;state.original=item;render();status('Chart loaded. Load your own corrected PNG into the Recolored panel to compare.');}
   catch(e){if(rev===state.revision){render();status(e.message,'error');}}
 }
 /* Compares where "ink" (non-white pixels) sits in both images on a coarse grid.
@@ -297,7 +264,7 @@ function compareWarning(a,b){
   return '';
 }
 async function loadCorrected(file) {
-  if (!file || !state.original || state.busy)return;
+  if (!file || !state.original)return;
   const rev=state.revision, ticket=++state.correctedRevision;
   state.corrected=null;render();status('Opening corrected PNG…','busy');
   try {
@@ -327,60 +294,15 @@ async function sample() {
     status('Prepared sample pair: identical chart data drawn with two palettes. This demonstrates the comparison; no AI or automatic correction was run.');
   } catch(e){if(rev===state.revision)status(e.message,'error');}
 }
-async function fix() {
-  if(!state.original || state.busy)return;
-  let endpoint;
-  try {endpoint=new URL($('endpoint').value.trim());if(!['http:','https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password)throw new Error();}
-  catch{status('Enter a full HTTP or HTTPS API endpoint without credentials.','error');return;}
-  if(location.protocol==='https:' && endpoint.protocol==='http:'){status('This page uses HTTPS. Use an HTTPS API, or run both frontend and API locally over HTTP.','error');return;}
-  const rev=state.revision;const request=new AbortController();state.request=request;state.busy=true;state.corrected=null;state.correctedRevision++;render();status('Sending your chart to the recoloring service…','busy');
-  const timer=setTimeout(()=>request.abort(),90000);
-  try {
-    const body=new FormData();body.append('image',state.original.blob,state.original.name);
-    let response;
-    try {response=await fetch(endpoint.href,{method:'POST',body,signal:request.signal,credentials:'omit'});}
-    catch(e) {
-      if(e instanceof TypeError) throw new Error(`Could not contact the recoloring API at ${endpoint.href}. Confirm it is running and allows this page via CORS, or load a corrected PNG manually.`);
-      throw e;
-    }
-    if(!response.ok){
-      if((response.status===404||response.status===405) && endpoint.origin===location.origin)
-        throw new Error(`The endpoint returned HTTP ${response.status}: no recoloring API is running at that address (static hosting cannot run one). Check the path, open “Connect recoloring service” to point at a running ChartSafe API, or run the backend locally and open the page from it.`);
-      throw new Error(`The service returned HTTP ${response.status}. Check that the recoloring service is running and the endpoint address is correct.`);
-    }
-    if(!(response.headers.get('content-type')||'').toLowerCase().startsWith('image/png'))throw new Error('The service must return an image/png response. Check that the endpoint is a ChartSafe recoloring API.');
-    const item=await decodePNG(await response.blob(),'corrected.png');
-    if(rev!==state.revision)return;
-    if(item.width!==state.original.width || item.height!==state.original.height)throw new Error('The service changed the image dimensions. Expected a PNG matching the original size.');
-    const report=parseReportHeader(response.headers.get('X-ChartSafe-Report'));
-    state.corrected=item;state.sample=false;
-    status(report?`Recolored PNG received. ${describeReport(report)}`:'Recolored PNG received. Inspect the result in each view.');
-  } catch(e){if(rev===state.revision)status(e.name==='AbortError'?'The service timed out after 90 seconds. Try again once the backend is ready.':e.message,'error');}
-  finally {clearTimeout(timer);if(rev===state.revision){state.busy=false;state.request=null;render();}}
-}
 $('upload').addEventListener('change',e=>{loadOriginal(e.target.files[0]);e.target.value='';});
 $('corrected-upload').addEventListener('change',e=>{loadCorrected(e.target.files[0]);e.target.value='';});
-$('sample').addEventListener('click',sample);$('fix').addEventListener('click',fix);$('endpoint').addEventListener('input',controls);
+$('sample').addEventListener('click',sample);
 document.querySelectorAll('input[name="vision"]').forEach(r=>r.addEventListener('change',()=>{state.mode=r.value;render();}));
 ['dragenter','dragover'].forEach(event=>$('dropzone').addEventListener(event,e=>{e.preventDefault();$('dropzone').classList.add('dragging');}));
 ['dragleave','drop'].forEach(event=>$('dropzone').addEventListener(event,e=>{e.preventDefault();$('dropzone').classList.remove('dragging');}));
 $('dropzone').addEventListener('drop',e=>loadOriginal(e.dataTransfer.files[0]));
 window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
 $('download').addEventListener('click',()=>{if(!state.corrected)return;const url=URL.createObjectURL(state.corrected.blob);const a=document.createElement('a');a.href=url;a.download='chartsafe-corrected.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
-/* Endpoint default: only same-origin APIs that can actually exist are used.
-   GitHub Pages is static hosting — a same-origin /api/recolor default there
-   would silently point at a nonexistent service, so the field starts empty
-   and the user is told how to connect a real API. Local development (the
-   backend serving this page, or opening the file directly) keeps a working
-   default. */
-function defaultEndpoint() {
-  if (location.protocol.startsWith('http') && !location.hostname.endsWith('.github.io')) return location.origin+'/api/recolor';
-  if (!location.protocol.startsWith('http')) return 'http://127.0.0.1:8000/api/recolor';
-  return '';
-}
-$('endpoint').value=defaultEndpoint();
-if(!$('endpoint').value.trim())
-  status('No recoloring service is connected. Simulations, the sample, and loading a corrected PNG all work in your browser. To recolor automatically, open “Connect recoloring service” and enter the HTTPS address of a ChartSafe API.');
 controls();
 render();
 </script>

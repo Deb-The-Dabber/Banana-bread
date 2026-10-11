@@ -147,86 +147,30 @@ test('shipped simulation matches the published Machado formulas', () => {
   assert.equal(deuteranopiaRed[2], 0);
 });
 
-test('parseReportHeader accepts the documented backend report and rejects everything else', () => {
-  const context = runIsolated(`${extractFunction(script, 'parseReportHeader')}`);
-  const parse = context.parseReportHeader;
-  const valid = JSON.stringify({
-    version: 1,
-    color_groups: 2,
-    mapping: [
-      { from: [196, 92, 80], to: '#D55E00' },
-      { from: [114, 149, 69], to: '#009E73' }
-    ],
-    note: 'Heuristic dominant-color mapping from pixel statistics; not an accessibility certification.'
-  });
-  const parsed = parse(valid);
-  assert.equal(parsed.version, 1);
-  assert.equal(parsed.color_groups, 2);
-  assert.equal(parsed.mapping.length, 2);
-
-  assert.equal(parse(null), null);
-  assert.equal(parse(''), null);
-  assert.equal(parse('not json'), null);
-  assert.equal(parse('"a string"'), null);
-  assert.equal(parse('[1,2,3]'), null);
-  assert.equal(parse('{"version":2,"color_groups":1}'), null);
-  assert.equal(parse('{"version":1,"color_groups":"2"}'), null);
-  assert.equal(parse('{"version":1,"color_groups":-1}'), null);
-  assert.equal(parse('{"version":1,"color_groups":10}'), null);
-  assert.equal(parse('{"version":1,"color_groups":2.5}'), null);
-  assert.equal(parse('{"version":1,"color_groups":2,"mapping":[]}'), null, 'mapping length must match color_groups');
-  assert.equal(parse('{"version":1,"color_groups":1,"mapping":[{"from":[1,2],"to":"#000000"}]}'), null);
-  assert.equal(parse('{"version":1,"color_groups":1,"mapping":[{"from":[1,2,300],"to":"#000000"}]}'), null);
-  assert.equal(parse('{"version":1,"color_groups":1,"mapping":[{"from":[1,2,3],"to":"black"}]}'), null);
-  /* mapping is optional: a bare group count is still a valid report. */
-  assert.equal(parse('{"version":1,"color_groups":0}').color_groups, 0);
-});
-
-test('describeReport states facts without inventing accessibility scores', () => {
-  const context = runIsolated(`${extractFunction(script, 'describeReport')}`);
-  const describe = context.describeReport;
-  const zero = describe({ color_groups: 0 });
-  assert.match(zero, /No dominant chart colors were detected, so the image was left unchanged/);
-  assert.match(zero, /heuristic/);
-  assert.match(describe({ color_groups: 1 }), /1 dominant color group was mapped/);
-  assert.match(describe({ color_groups: 3 }), /3 dominant color groups were mapped/);
-  for (const groups of [0, 1, 3]) {
-    assert.doesNotMatch(describe({ color_groups: groups }), /pass|score|certif/i);
-  }
-});
-
-test('defaultEndpoint never points a GitHub Pages host at a nonexistent same-origin API', () => {
-  const cases = [
-    [{ protocol: 'https:', hostname: 'deb-the-dabber.github.io', origin: 'https://deb-the-dabber.github.io' }, ''],
-    [{ protocol: 'https:', hostname: 'user.github.io', origin: 'https://user.github.io' }, ''],
-    [{ protocol: 'http:', hostname: '127.0.0.1', origin: 'http://127.0.0.1:8000' }, 'http://127.0.0.1:8000/api/recolor'],
-    [{ protocol: 'https:', hostname: 'chartsafe.example', origin: 'https://chartsafe.example' }, 'https://chartsafe.example/api/recolor'],
-    [{ protocol: 'file:', hostname: '', origin: 'null' }, 'http://127.0.0.1:8000/api/recolor']
-  ];
-  for (const [location, expected] of cases) {
-    const context = runIsolated(`${extractFunction(script, 'defaultEndpoint')}`, { location });
-    assert.equal(context.defaultEndpoint(), expected, `${location.protocol}//${location.hostname}`);
-  }
-});
-
-test('the shipped markup applies the vision mode to both panels and keeps the recolored panel visible', () => {
-  /* Normal mode shows both images side by side in true colors; every other
-     mode applies the same simulation to both panels; the corrected card is
-     never hidden by mode switching. */
-  assert.match(script, /renderOne\('before','before-empty',state\.original,state\.mode,'Original chart'\)/);
-  assert.match(script, /renderOne\('after','after-empty',state\.corrected,state\.mode,'Recolored chart'\)/);
+test('the Original box is never simulated; the right preview carries the selected view', () => {
+  /* The original keeps its true colors in every mode; the selected vision
+     view is applied only to the right preview, which shows the corrected
+     image when one is loaded and otherwise a clearly-labeled simulation of
+     the original. */
+  assert.match(script, /renderOne\('before','before-empty',state\.original,'normal','Original chart'\)/);
+  assert.match(script, /renderOne\('after','after-empty',state\.corrected \|\| \(simulating\?state\.original:null\),state\.mode/);
   assert.match(script, /\$\('corrected-card'\)\.hidden=false/);
-  assert.doesNotMatch(script, /corrected-card'\)\.hidden=!simulating/);
-  assert.doesNotMatch(script, /renderOne\('before','before-empty',state\.original,'normal'/);
+  assert.doesNotMatch(script, /renderOne\('before','before-empty',state\.original,state\.mode/);
+  assert.match(script, /'Simulation · '/);
+  assert.match(script, /'Simulation only'/);
+});
+
+test('the shipped UI contains no recoloring service machinery', () => {
+  for (const gone of ['id="fix"', 'id="endpoint"', 'Connect recoloring service', 'Recolor chart', 'api/recolor']) {
+    assert.ok(!html.includes(gone), `docs/index.html still contains ${gone}`);
+  }
 });
 
 test('the shipped markup no longer dangles score UI that no backend implements', () => {
-  for (const gone of ['lowestGap', 'passes_all', 'series_found', 'Scores appear here', '20+ passes']) {
+  for (const gone of ['lowestGap', 'passes_all', 'series_found', 'Scores appear here', '20+ passes', 'X-ChartSafe-Report']) {
     assert.ok(!html.includes(gone), `docs/index.html still mentions ${gone}`);
   }
-  for (const present of ['parseReportHeader', 'X-ChartSafe-Report', 'defaultEndpoint', 'not a certification of accessibility']) {
-    assert.ok(html.includes(present), `docs/index.html is missing ${present}`);
-  }
+  assert.ok(html.includes('not a certification of accessibility'), 'the non-certification disclaimer must stay');
 });
 
 test('frontend assets are consolidated: no orphaned duplicates, legacy route redirects', () => {

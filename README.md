@@ -3,22 +3,27 @@
 ChartSafe is a small tool for checking how a PNG chart reads for people with
 color-vision deficiencies. Everything runs in your browser: load a PNG,
 preview it under approximate deuteranopia/protanopia/tritanopia simulations,
-and — if you connect a recoloring service — compare it against a version
-whose dominant colors have been remapped to a colorblind-safe palette.
+and compare it side by side against a corrected PNG (one you load yourself,
+or the prepared sample pair). The **Original** box always keeps its true
+colors; the selected vision view is applied only to the right preview.
+
+The page is fully client-side: no image is ever uploaded, and it makes no
+network requests. There is no recoloring button — bring your own corrected
+PNG (for example one produced with the standalone API below) or use the
+sample pair to explore the comparison.
 
 **What it is not:** an accessibility certification. The simulations are
 mathematical approximations (Machado, Oliveira & Fernandes 2009, severity
 1.0; the "tritanopia" view is a severe-tritanomaly stand-in, not a precise
-model), and the recoloring is a pixel-count heuristic with no understanding
-of chart semantics. You remain the judge of whether labels, data, and
-layout still read correctly.
+model), and a recolored image is not automatically an accessible chart. You
+remain the judge of whether labels, data, and layout still read correctly.
 
 ## Repository layout
 
 | Path | Role |
 |------|------|
 | `docs/` | The GitHub Pages site (served from this folder on `main`). `index.html` is the app; `landing.html` is the marketing page; `chartsafe-v2-html.html` is a redirect to the app root kept for the old link. |
-| `backend/` | Node.js recoloring API (`server.js`), tests, and dependencies. |
+| `backend/` | Optional Node.js recoloring API (`server.js`), tests, and dependencies. Serves `docs/` locally and exposes `POST /api/recolor` for scripts. |
 | `BananaHacks/` | Sample chart PNGs used during development. |
 
 ## Running locally
@@ -28,24 +33,17 @@ Prerequisites: Node.js ≥ 18.
 ```sh
 cd backend
 npm install
-npm start          # serves the app + API at http://127.0.0.1:8000/
+npm start          # serves the app at http://127.0.0.1:8000/
 ```
 
-Open <http://127.0.0.1:8000/> (not the HTML file directly) so the page and
-the API share an origin. On that origin the app pre-fills the endpoint as
-`http://127.0.0.1:8000/api/recolor`. When `docs/index.html` is opened from
-the filesystem, the default is `http://127.0.0.1:8000/api/recolor` as well.
+Open <http://127.0.0.1:8000/>. The page works from any static host (or even
+`docs/index.html` opened directly); the local server is a convenience and
+also exposes the API below for producing corrected PNGs with a script.
 
-On the public GitHub Pages site the endpoint field starts **empty**:
-static hosting cannot run the API, so a same-origin default would silently
-point at a dead URL. Frontend-only features (simulations, the prepared
-sample pair, loading a corrected PNG by hand, downloading) all work there
-without any backend. To recolor automatically, open *Connect recoloring
-service* and enter the HTTPS address of a running ChartSafe API. An HTTPS
-page cannot call an `http://` endpoint (the app blocks this with a clear
-message), so the live site can only use an HTTPS API.
+## Standalone recoloring API (optional)
 
-## API contract
+The page UI never calls the API. It exists so you can produce a corrected
+PNG programmatically, then load it into the Recolored panel in the browser.
 
 `POST /api/recolor` with `multipart/form-data`, one file in the `image`
 field (`image/png`).
@@ -67,8 +65,7 @@ field (`image/png`).
   `color_groups` is the number of dominant chromatic clusters detected and
   `mapping` lists each cluster's average source color and the palette entry
   it was pulled toward. Every value is computed from this request's actual
-  pixels. The report is factual bookkeeping, **not** a score: the frontend
-  validates it strictly and renders it as plain facts only.
+  pixels. The report is factual bookkeeping, **not** a score.
 
 - 400 not a valid PNG / wrong field name / more than one file
 - 403 origin not allowed
@@ -81,6 +78,13 @@ non-file field (≤ 1 KB), 60 s header timeout, 120 s request timeout.
 Grayscale, palette, and 16-bit PNGs are accepted and normalized to 8-bit
 RGBA on read. Invalid, truncated, or oversized-but-valid headers are
 rejected before pixel decoding where possible.
+
+Example:
+
+```sh
+curl -X POST -F "image=@chart.png" http://127.0.0.1:8000/api/recolor \
+  -o chart-corrected.png
+```
 
 ## CORS
 
@@ -95,12 +99,12 @@ CORS_ORIGINS="https://deb-the-dabber.github.io" npm start
 
 Same-origin loopback requests need no configuration. Allowed origins get
 `Access-Control-Allow-Origin`, `Vary: Origin`, `POST, OPTIONS` methods, and
-`Access-Control-Expose-Headers: X-ChartSafe-Report` so the browser lets the
-frontend read the report header cross-origin. Everything else gets 403.
+`Access-Control-Expose-Headers: X-ChartSafe-Report` so cross-origin scripts
+can read the report header. Everything else gets 403.
 
-## How recoloring works (and what it cannot do)
+## How the recoloring works (and what it cannot do)
 
-The backend builds a histogram of chromatic (saturated, mid-luminance,
+The API builds a histogram of chromatic (saturated, mid-luminance,
 sufficiently opaque) pixels, clusters the dominant colors, and pulls each
 matched pixel toward the closest entry of a fixed six-color accessible
 palette (Okabe–Ito). Cluster → palette assignment is an optimal injective
@@ -138,31 +142,17 @@ CORS allowlist + preflight + report-header exposure, report schema and
 determinism, palette-assignment stability, grayscale/16-bit normalization,
 static routes and the legacy redirect, and — by extracting the inline
 script from the shipped `docs/index.html` — the simulation math (against an
-independent transcription of the published formulas), report validation,
-and the endpoint-default policy. The full UI flow was additionally verified
-in a headless Chromium (upload → recolor → mode switching → download
-state); those browser checks live outside the repo and are not part of
-`npm test`.
+independent transcription of the published formulas), the rule that the
+Original box is never simulated, the absence of any recoloring-service UI,
+and static markup assertions. The full UI flow was additionally verified in
+a headless Chromium (upload → vision tabs → sample → download state,
+including byte-exact constancy of the Original box across all tabs); those
+browser checks live outside the repo and are not part of `npm test`.
 
-## Deploying the recoloring API publicly (not done yet)
+## Privacy
 
-The GitHub Pages site is static; it has **no backend deployed**. Hosting the
-API for the public site requires, at minimum:
-
-1. A host that runs Node ≥ 18 (Render, Fly.io, Railway, a VPS, …) with the
-   API exposed over **HTTPS**.
-2. `CORS_ORIGINS="https://deb-the-dabber.github.io"` (exact origin, no
-   trailing slash) so only the public page can call it.
-3. The server binds to `127.0.0.1` only (loopback, safe by default) and
-   takes its port from `process.env.PORT`. Most platforms need the app to
-   bind `0.0.0.0`; that change should be made deliberately when a provider
-   is chosen, not speculatively.
-4. A rate limit at the hosting layer (none is implemented in-process; a
-   public API without one is abusable).
-5. Privacy consideration: recolored images are processed in memory and
-   never stored, but every request transmits the user's PNG to that host —
-   say so on any public deployment.
-
-Pushing the frontend changes to GitHub Pages is a normal commit + push to
-`main` (Pages serves `docs/`); no other Pages configuration exists in the
-repo.
+Images never leave the browser: decoding, simulation, and downloads all
+happen locally, and the page makes no network requests. If you run the
+optional API yourself and send it a PNG, that request transmits the image
+to wherever the API runs — the API processes it in memory and stores
+nothing.
