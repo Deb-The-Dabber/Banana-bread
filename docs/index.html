@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ChartSafe — Compare your charts</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="simulation.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="./" aria-label="ChartSafe home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>ChartSafe</a>
+</header>
+<main>
+  <section class="intro">
+    <h1>Make your charts <em>easier to see.</em></h1>
+    <p>Upload a PNG, preview different color vision views, and compare a recolored version.</p>
+  </section>
+  <section class="workspace" aria-label="Chart workspace">
+    <aside class="controls">
+      <div class="step-label"><span>01</span> UPLOAD</div>
+      <h2>Choose a chart</h2>
+      <p class="muted small">Clean PNG bar and line charts work best.</p>
+      <label class="dropzone" id="dropzone">
+        <span class="upload-icon" aria-hidden="true">↑</span><strong>Choose a chart</strong><span>or drop a PNG here</span>
+        <span class="file-limit">Up to 10 MB · 8 megapixels</span>
+        <input id="upload" type="file" accept="image/png" aria-label="Upload original PNG chart">
+      </label>
+      <button id="sample" class="text-button">Try the sample chart <span aria-hidden="true">↗</span></button>
+      <div class="divider"></div>
+      <div class="step-label"><span>02</span> ADD A CORRECTION</div>
+      <p class="muted small">Load a corrected PNG, or connect a recoloring service.</p>
+      <button id="fix" class="primary" disabled>Recolor chart <span aria-hidden="true">→</span></button>
+      <label class="secondary file-button">Load corrected PNG
+        <input id="corrected-upload" type="file" accept="image/png" disabled aria-label="Upload corrected PNG chart">
+      </label>
+      <details class="settings">
+        <summary>Connect recoloring service</summary>
+        <label for="endpoint">API endpoint</label>
+        <input id="endpoint" type="url" placeholder="http://localhost:8000/api/recolor" spellcheck="false">
+        <p class="small muted">Recolor sends the original PNG to this address. Use a service you trust.</p>
+      </details>
+      <div class="privacy"><span aria-hidden="true">◉</span><p>This page doesn't save your images. Recolor sends the original to the service address you enter.</p></div>
+    </aside>
+    <div class="studio">
+      <div class="studio-heading">
+        <div><div class="step-label"><span>03</span> COMPARE</div><h2>See the difference</h2></div>
+        <span id="source-badge" class="badge">No image loaded</span>
+      </div>
+      <fieldset class="vision"><legend>Simulated color vision</legend>
+        <div class="vision-options">
+          <label><input type="radio" name="vision" value="normal" checked><span>Normal vision</span></label>
+          <label><input type="radio" name="vision" value="deuteranopia"><span>Deuteranopia</span></label>
+          <label><input type="radio" name="vision" value="protanopia"><span>Protanopia</span></label>
+          <label><input type="radio" name="vision" value="tritanopia"><span>Tritanopia*</span></label>
+        </div>
+      </fieldset>
+      <p id="vision-note" class="view-note">Original colors, with no simulation applied.</p>
+      <div class="comparison">
+        <article class="chart-card"><div class="card-title"><h3><span class="dot original"></span>Original</h3><span id="original-meta">Awaiting PNG</span></div>
+          <div class="canvas-wrap"><canvas id="before" hidden role="img" aria-label="Original chart preview"></canvas>
+            <div class="empty" id="before-empty"><span aria-hidden="true">▥</span><strong>Your chart goes here</strong><p>Upload an image or try the sample.</p></div>
+          </div>
+        </article>
+        <article class="chart-card"><div class="card-title"><h3><span class="dot corrected"></span>Recolored</h3><span id="corrected-meta">Awaiting result</span></div>
+          <div class="canvas-wrap"><canvas id="after" hidden role="img" aria-label="Recolored chart preview"></canvas>
+            <div class="empty" id="after-empty"><span aria-hidden="true">▥</span><strong>A new perspective</strong><p>Load a corrected PNG or connect the service.</p></div>
+          </div>
+        </article>
+      </div>
+      <div id="status" class="status" role="status" aria-live="polite">Upload a PNG or try the sample chart.</div>
+      <div class="result-footer"><button class="download" id="download" disabled>Download corrected PNG <span aria-hidden="true">↓</span></button></div>
+      <p class="simulation-disclaimer">Simulations are approximations and vary from individual experience. *The blue-yellow view uses a severe tritanomaly approximation. A recolored image is not a certification of accessibility.</p>
+    </div>
+  </section>
+</main>
+</body>
+</html>
