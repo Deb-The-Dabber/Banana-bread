@@ -12,6 +12,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "animejs": "^4.5.0",
     "busboy": "^1.6.0",
     "pngjs": "^7.0.0"
   }

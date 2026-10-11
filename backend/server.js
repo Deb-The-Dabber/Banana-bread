@@ -18,6 +18,7 @@ const ACCESSIBLE_PALETTE = ['#0072B2', '#E69F00', '#009E73', '#D55E00', '#CC79A7
 const STATIC_FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
+  '/landing.html': ['landing.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/simulation.js': ['simulation.js', 'text/javascript; charset=utf-8'],
   '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
@@ -224,6 +225,14 @@ function createServer(allowedOrigins = new Set(
   return http.createServer(async (request, response) => {
     const pathname = new URL(request.url, 'http://127.0.0.1').pathname;
     const staticFile = STATIC_FILES[pathname];
+    if (request.method === 'GET' && pathname === '/animejs.js') {
+      response.writeHead(200, {
+        'Content-Type': 'text/javascript; charset=utf-8',
+        'Cache-Control': 'no-store'
+      });
+      fs.createReadStream(path.join(__dirname, 'node_modules/animejs/dist/bundles/anime.umd.min.js')).pipe(response);
+      return;
+    }
     if (request.method === 'GET' && staticFile) {
       response.writeHead(200, {
         'Content-Type': staticFile[1],

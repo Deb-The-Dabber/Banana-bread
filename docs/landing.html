@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f7f8f2">
+  <meta name="description" content="Make your charts easier to see. Explore color-vision simulations and recolor chart palettes with ChartSafe.">
+  <title>ChartSafe — See the whole story</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #203b36;
+      --muted: #64736c;
+      --paper: #f7f8f2;
+      --line: #dde3d8;
+      --green: #245a47;
+      --deep-green: #173d32;
+      --lime: #dcf392;
+      --white: #fff;
+      --orange: #b84d2e;
+      --blue: #3f70bc;
+      --gold: #dfb700;
+      --shadow: 0 24px 70px rgb(32 59 54 / 12%);
+    }
+    *,*::before,*::after{box-sizing:border-box}
+    html{scroll-behavior:smooth;scrollbar-width:none;-ms-overflow-style:none}
+    html::-webkit-scrollbar,body::-webkit-scrollbar,.sample-dialog::-webkit-scrollbar{display:none;width:0;height:0}
+    body{margin:0;background:var(--paper);color:var(--ink);font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+    a{color:inherit}
+    button,a{-webkit-tap-highlight-color:transparent}
+    :focus-visible{outline:3px solid var(--orange);outline-offset:4px}
+    .site-header,.hero,.section,.site-footer{width:min(1240px,calc(100% - 64px));margin-inline:auto}
+    .site-header{height:82px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+    .brand{display:inline-flex;align-items:center;gap:11px;text-decoration:none;font-size:24px;font-weight:750;letter-spacing:-1.2px}
+    .brand-mark{display:flex;align-items:end;gap:3px;height:23px}
+    .brand-mark i{display:block;width:6px;border-radius:3px 3px 1px 1px;background:var(--green)}
+    .brand-mark i:nth-child(1){height:13px}.brand-mark i:nth-child(2){height:22px}.brand-mark i:nth-child(3){height:17px}
+    .header-right{display:flex;align-items:center;gap:28px}
+    .nav-link{display:inline-flex;align-items:center;min-height:46px;padding:0 16px;border:1px solid var(--line);border-radius:8px;background:#fbfcf8;font-size:15px;font-weight:700;text-decoration:none;color:var(--green);transition:color .2s,border-color .2s,background .2s}
+    .nav-link:hover{border-color:#aab9a9;background:#fff;color:var(--deep-green)}
+    .button{min-height:46px;display:inline-flex;align-items:center;justify-content:center;gap:12px;padding:0 20px;border:1px solid transparent;border-radius:8px;background:var(--green);color:var(--white);font-size:13px;font-weight:700;text-decoration:none;box-shadow:0 7px 18px rgb(36 90 71 / 16%);transition:transform .2s,box-shadow .2s,background .2s}
+    .button:hover{transform:translateY(-2px);background:#194b39;box-shadow:0 11px 24px rgb(36 90 71 / 24%)}
+    .button span{font-size:17px;line-height:1}
+    .button.secondary{background:var(--white);border-color:var(--line);box-shadow:none;color:var(--ink)}
+    .button.secondary:hover{border-color:#aab9a9;background:#fbfcf8}
+
+    .hero{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(410px,.96fr);align-items:center;gap:46px;min-height:calc(100svh - 176px);padding-block:clamp(22px,4.7vh,46px)}
+    .hero-copy{position:relative;z-index:2;max-width:610px}
+    .eyebrow{display:inline-flex;align-items:center;gap:9px;color:var(--green);font-size:10px;font-weight:750;letter-spacing:1.6px;text-transform:uppercase}
+    .eyebrow-dot{width:7px;height:7px;border-radius:50%;background:#79a964;box-shadow:0 0 0 4px #79a96420}
+    h1{max-width:630px;margin:22px 0 20px;font-size:clamp(54px,7vw,88px);font-weight:520;letter-spacing:-6.5px;line-height:.99}
+    h1 em{color:var(--green);font-family:Georgia,"Times New Roman",serif;font-weight:400;letter-spacing:-5px}
+    .hero-lede{max-width:485px;margin:0;color:var(--muted);font-size:16px;line-height:1.75}
+    .hero-actions{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-top:31px}
+    .trust-note{display:flex;align-items:center;gap:8px;margin-top:24px;color:var(--muted);font-size:11px}
+    .trust-note svg{flex:none;color:var(--green)}
+    .hero-visual{position:relative;min-height:462px;display:grid;place-items:center;isolation:isolate}
+    .visual-glow{position:absolute;z-index:-2;width:390px;height:390px;border-radius:50%;background:radial-gradient(circle,#e8efd9 0,#eef2e7 48%,transparent 72%)}
+    .orbit{position:absolute;z-index:-1;width:432px;height:432px;border:1px solid #dfe6d8;border-radius:50%}
+    .orbit::before,.orbit::after{content:"";position:absolute;width:10px;height:10px;border:2px solid var(--green);border-radius:50%;background:var(--paper)}
+    .orbit::before{top:70px;right:62px}.orbit::after{bottom:84px;left:42px;width:7px;height:7px;background:#eaa681;border-color:#eaa681}
+    .chart-window{position:relative;width:min(100%,455px);overflow:hidden;border:1px solid #dce4d8;border-radius:15px;background:var(--white);box-shadow:var(--shadow);transform:rotate(-2deg)}
+    .window-top{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 17px;border-bottom:1px solid #e8ece5;background:#fcfdf9}
+    .window-brand{display:flex;align-items:center;gap:8px;font-size:10px;font-weight:700;letter-spacing:.3px}
+    .window-brand-mark{display:flex;align-items:end;gap:2px;height:13px}
+    .window-brand-mark i{width:3px;border-radius:1px;background:var(--green)}
+    .window-brand-mark i:nth-child(1){height:7px}.window-brand-mark i:nth-child(2){height:13px}.window-brand-mark i:nth-child(3){height:10px}
+    .window-status{display:flex;align-items:center;gap:5px;color:#718077;font-size:9px}
+    .window-status::before{content:"";width:6px;height:6px;border-radius:50%;background:#80b668}
+    .chart-content{padding:22px 23px 17px}
+    .chart-kicker{margin:0 0 4px;color:#829087;font-size:8px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase}
+    .chart-title{margin:0;font-size:17px;font-weight:700;letter-spacing:-.45px}
+    .chart-subtitle{margin:3px 0 0;color:#859088;font-size:9px}
+    .chart{position:relative;height:208px;margin-top:15px;padding:4px 0 22px 30px}
+    .chart-grid{position:absolute;inset:9px 0 24px 30px;display:flex;flex-direction:column;justify-content:space-between}
+    .gridline{position:relative;width:100%;height:1px;background:#edf0eb}
+    .gridline span{position:absolute;right:calc(100% + 9px);top:-6px;color:#9ba69e;font-size:8px}
+    .bar-groups{position:absolute;inset:9px 10px 24px 40px;display:flex;align-items:end;justify-content:space-around}
+    .bar-group{height:100%;display:flex;align-items:end;gap:7px}
+    .bar{width:24px;height:var(--bar-height);border-radius:3px 3px 0 0;transform-origin:bottom;transform:scaleY(1)}
+    .bar.a{background:#ce5a50}.bar.b{background:#789d49}
+    .xlabels{position:absolute;left:40px;right:10px;bottom:4px;display:flex;justify-content:space-around;color:#7c877f;font-size:8px}
+    .legend{display:flex;justify-content:center;gap:21px;margin-top:3px;color:#657169;font-size:8px}
+    .legend span{display:inline-flex;align-items:center;gap:6px}
+    .legend i{width:7px;height:7px;border-radius:2px;background:#ce5a50}
+    .legend span+span i{background:#789d49}
+    .window-footer{display:flex;align-items:center;justify-content:space-between;margin-top:18px;padding-top:13px;border-top:1px solid #edf0eb;color:#7a867e;font-size:8px}
+    .window-footer strong{color:var(--green);font-size:9px}
+    .floating-note{position:absolute;z-index:2;display:flex;align-items:center;gap:10px;padding:12px 15px;border:1px solid #e2e8df;border-radius:10px;background:rgb(255 255 255 / 94%);box-shadow:0 12px 30px rgb(32 59 54 / 10%);backdrop-filter:blur(8px)}
+    .floating-note.top{top:42px;right:-2px;transform:rotate(3deg)}
+    .floating-note.bottom{bottom:33px;left:-12px;transform:rotate(-3deg)}
+    .note-icon{width:31px;height:31px;display:grid;place-items:center;border-radius:8px;background:#edf4e7;color:var(--green)}
+    .note-icon.orange{background:#fff0e8;color:#aa5938}
+    .note-copy strong{display:block;font-size:10px}
+    .note-copy small{display:block;margin-top:2px;color:var(--muted);font-size:8px}
+    .scribble{position:absolute;right:16px;bottom:16px;width:43px;height:43px;color:#719a55;opacity:.75}
+
+    .proof-strip{border-block:1px solid var(--line);background:#fbfcf8}
+    .proof-inner{width:min(1240px,calc(100% - 64px));min-height:92px;display:flex;align-items:center;justify-content:space-between;gap:25px;margin:auto}
+    .proof-label{max-width:200px;color:var(--muted);font-size:10px;line-height:1.55}
+    .proof-items{display:flex;align-items:center;justify-content:flex-end;gap:clamp(17px,4vw,50px);flex-wrap:wrap}
+    .proof-item{display:flex;align-items:center;gap:9px;font-size:11px;font-weight:650}
+    .proof-check{width:20px;height:20px;display:grid;place-items:center;border-radius:50%;background:#eaf2e4;color:var(--green);font-size:12px}
+    .section{padding-block:112px}
+    .section-heading{max-width:610px;margin-bottom:43px}
+    .section-heading h2{margin:14px 0 10px;font-size:clamp(34px,4.5vw,52px);font-weight:550;letter-spacing:-2.7px;line-height:1.08}
+    .section-heading p{max-width:500px;margin:0;color:var(--muted);font-size:14px;line-height:1.75}
+    .feature-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}
+    .feature-card{position:relative;min-height:250px;overflow:hidden;padding:25px;border:1px solid var(--line);border-radius:12px;background:var(--white);transition:transform .25s,border-color .25s,box-shadow .25s}
+    .feature-card:hover{transform:translateY(-5px);border-color:#c5d3c2;box-shadow:0 15px 38px rgb(32 59 54 / 7%)}
+    .feature-number{color:#849286;font-size:9px;font-weight:700;letter-spacing:1.3px}
+    .feature-icon{width:42px;height:42px;display:grid;place-items:center;margin-top:23px;border-radius:11px;background:#edf3e7;color:var(--green)}
+    .feature-card:nth-child(2) .feature-icon{background:#fff1e8;color:#a65334}
+    .feature-card:nth-child(3) .feature-icon{background:#edf1fa;color:#4568aa}
+    .feature-card h3{margin:17px 0 7px;font-size:17px;letter-spacing:-.4px}
+    .feature-card p{max-width:290px;margin:0;color:var(--muted);font-size:12px;line-height:1.7}
+    .feature-arrow{position:absolute;top:23px;right:23px;color:#a0aca0;font-size:17px;transition:transform .2s,color .2s}
+    .feature-card:hover .feature-arrow{transform:translate(3px,-3px);color:var(--green)}
+    .callout{position:relative;overflow:hidden;display:grid;grid-template-columns:1fr auto;align-items:center;gap:30px;padding:48px 52px;border:1px solid #d6e2ca;border-radius:16px;background:#edf3e6}
+    .callout::before,.callout::after{content:"";position:absolute;border:1px solid #dce7d2;border-radius:50%;pointer-events:none}
+    .callout::before{width:250px;height:250px;right:80px;top:-173px}
+    .callout::after{width:350px;height:350px;right:30px;top:-225px}
+    .callout-copy{position:relative;z-index:1;max-width:620px}
+    .callout h2{margin:12px 0 7px;font-size:clamp(28px,4vw,42px);font-weight:550;letter-spacing:-2px;line-height:1.1}
+    .callout p{margin:0;color:var(--muted);font-size:13px}
+    .callout .button{position:relative;z-index:1;white-space:nowrap}
+    .sample-dialog{width:min(900px,calc(100% - 32px));max-height:min(90svh,780px);padding:0;overflow:auto;scrollbar-width:none;border:1px solid #dce4d8;border-radius:18px;background:var(--paper);color:var(--ink);box-shadow:0 28px 90px rgb(20 42 34 / 28%)}
+    .sample-dialog::backdrop{background:rgb(20 42 34 / 58%);backdrop-filter:blur(5px)}
+    .demo-panel{padding:clamp(22px,4vw,38px)}
+    .demo-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}
+    .demo-heading h2{margin:9px 0 6px;font-size:clamp(25px,4vw,36px);letter-spacing:-1.6px;line-height:1.1}
+    .demo-heading p{margin:0;color:var(--muted);font-size:13px}
+    .demo-close{width:38px;height:38px;flex:none;display:grid;place-items:center;border:1px solid var(--line);border-radius:50%;background:#fff;color:var(--ink);font-size:22px;cursor:pointer}
+    .demo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;margin-top:26px}
+    .demo-card{min-width:0;padding:17px;border:1px solid var(--line);border-radius:13px;background:#fff}
+    .demo-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px}
+    .demo-card-head strong{font-size:13px}
+    .demo-card-head span{color:var(--muted);font-size:10px}
+    .demo-chart{position:relative;height:220px;padding:10px 14px 31px 38px}
+    .demo-gridlines{position:absolute;inset:10px 14px 31px 38px;display:flex;flex-direction:column;justify-content:space-between}
+    .demo-gridlines i{height:1px;background:#edf0eb}
+    .demo-ylabels{position:absolute;inset:4px auto 27px 0;display:flex;flex-direction:column;justify-content:space-between;color:#8b978e;font-size:9px}
+    .demo-groups{position:absolute;inset:10px 20px 31px 48px;display:flex;align-items:end;justify-content:space-around}
+    .demo-group{height:100%;display:flex;align-items:end;gap:6px}
+    .demo-bar{width:clamp(13px,2.7vw,23px);height:var(--bar-height);border-radius:3px 3px 0 0;transform-origin:bottom}
+    .demo-original .demo-bar.a{background:#c45c50}.demo-original .demo-bar.b{background:#729545}
+    .demo-recolored .demo-bar.a{background:#0072b2}.demo-recolored .demo-bar.b{background:#e69f00}
+    .demo-xlabels{position:absolute;right:19px;bottom:7px;left:47px;display:flex;justify-content:space-around;color:#68766d;font-size:9px}
+    .demo-legend{display:flex;justify-content:center;gap:19px;color:#53645a;font-size:10px}
+    .demo-legend span{display:inline-flex;align-items:center;gap:6px}
+    .demo-legend i{width:9px;height:9px;border-radius:2px;background:#c45c50}
+    .demo-legend span+span i{background:#729545}
+    .demo-recolored .demo-legend i{background:#0072b2}.demo-recolored .demo-legend span+span i{background:#e69f00}
+    .demo-footnote{margin:20px 0 0;color:var(--muted);font-size:11px;line-height:1.6}
+    .site-footer{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:20px;padding-block:28px;border-top:1px solid var(--line);color:var(--muted);font-size:10px}
+    .footer-brand{color:var(--ink);font-weight:750;font-size:14px;letter-spacing:-.5px}
+    .footer-links{display:flex;gap:20px}
+    .footer-links a{text-decoration:none}
+    .footer-links a:hover{color:var(--green)}
+    .footer-legal{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:18px;border-top:1px solid var(--line);font-size:10px}
+    .footer-legal p{margin:0}
+    .reveal{opacity:1;transform:none}
+    .js-motion .reveal{opacity:0;transform:translateY(20px)}
+    .js-motion .hero-copy>*{opacity:0;transform:translateY(18px)}
+    .js-motion .hero-visual{opacity:0;transform:translateY(16px) scale(.97)}
+    .js-motion .bar{transform:scaleY(0)}
+    @media(max-width:900px){
+      .hero{grid-template-columns:minmax(0,1fr) minmax(340px,.9fr);gap:22px;min-height:590px}
+      h1{font-size:clamp(52px,7.3vw,72px);letter-spacing:-5px}
+      .hero-visual{min-height:410px}
+      .chart-window{width:min(100%,405px)}
+      .orbit{width:370px;height:370px}
+      .floating-note.top{right:-4px}
+      .proof-inner{padding-block:20px}
+      .proof-label{max-width:150px}
+    }
+    @media(min-width:681px) and (max-height:800px){
+      .site-header{height:64px}
+      .hero{min-height:calc(100svh - 146px);padding-block:14px}
+      .hero-visual{min-height:320px}
+      .chart{height:165px}
+      .proof-inner{min-height:80px}
+      h1{font-size:clamp(46px,6.4vw,68px)}
+    }
+    @media(max-width:680px){
+      .site-header,.hero,.section,.site-footer{width:calc(100% - 36px)}
+      .site-header{height:68px}
+      .brand{font-size:21px}
+      .header-right{gap:12px}
+      .header-right .nav-link{min-height:42px;padding-inline:12px;font-size:13px}
+      .hero{grid-template-columns:1fr;gap:9px;min-height:0;padding-block:59px 51px;overflow:clip}
+      .hero-copy{max-width:none}
+      h1{max-width:520px;margin:18px 0 15px;font-size:clamp(53px,13vw,76px);letter-spacing:-4.6px}
+      h1 em{letter-spacing:-3.6px}
+      .hero-lede{font-size:14px}
+      .hero-actions{margin-top:23px}
+      .hero-actions .button{min-height:44px;padding-inline:15px;font-size:12px}
+      .trust-note{margin-top:17px;font-size:10px}
+      .hero-visual{min-height:375px;margin-top:3px}
+      .chart-window{width:min(100%,420px)}
+      .chart-content{padding:17px 17px 14px}
+      .chart{height:190px}
+      .bar{width:20px}
+      .orbit{width:min(92vw,360px);height:min(92vw,360px)}
+      .visual-glow{width:min(95vw,350px);height:min(95vw,350px)}
+      .floating-note.top{top:5px;right:-3px}
+      .floating-note.bottom{bottom:4px;left:-3px}
+      .proof-inner{width:calc(100% - 36px);align-items:flex-start;flex-direction:column;gap:13px;padding-block:21px}
+      .proof-label{max-width:none}
+      .proof-items{justify-content:flex-start;gap:12px 18px}
+      .proof-item{font-size:10px}
+      .section{padding-block:75px}
+      .section-heading{margin-bottom:28px}
+      .section-heading h2{font-size:38px;letter-spacing:-2px}
+      .section-heading p{font-size:13px}
+      .feature-grid{grid-template-columns:1fr;gap:10px}
+      .feature-card{min-height:0;padding:20px}
+      .feature-icon{margin-top:16px}
+      .feature-card h3{margin-top:13px}
+      .callout{grid-template-columns:1fr;gap:22px;padding:29px 24px}
+      .callout h2{font-size:32px}
+      .callout .button{justify-self:start}
+      .demo-grid{grid-template-columns:1fr;gap:10px;margin-top:19px}
+      .demo-card{padding:13px}
+      .demo-chart{height:185px}
+      .demo-footnote{margin-top:15px}
+      .site-footer{grid-template-columns:1fr auto;align-items:start;gap:14px;padding-block:22px}
+      .site-footer>span:nth-child(2){grid-column:1/-1;grid-row:2}
+      .footer-links{margin-left:auto}
+      .footer-legal{align-items:flex-start;flex-direction:column;gap:5px}
+    }
+    @media(max-width:370px){
+      .site-header,.hero,.section,.site-footer{width:calc(100% - 28px)}
+      .proof-inner{width:calc(100% - 28px)}
+      .brand{font-size:19px}
+      .header-right .button{padding-inline:10px}
+      .hero-actions{align-items:stretch;flex-direction:column}
+      .hero-actions .button{width:100%}
+      .floating-note{padding:9px 11px}
+      .floating-note.top{right:-6px}
+      .floating-note.bottom{left:-6px}
+      .note-copy small{font-size:7px}
+    }
+    @media(prefers-reduced-motion:reduce){
+      *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+      .js-motion .reveal,.js-motion .hero-copy>*,.js-motion .hero-visual{opacity:1;transform:none}
+      .js-motion .bar{transform:scaleY(1)}
+      .js-motion .demo-bar{transform:scaleY(1)}
+    }
+  </style>
+  <script defer src="/animejs.js"></script>
+  <script defer>
+    document.documentElement.classList.add('js-motion');
+    window.addEventListener('DOMContentLoaded', () => {
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const demo = document.querySelector('#sample-demo');
+      document.querySelector('#try-sample').addEventListener('click', () => {
+        demo.showModal();
+        if (!reducedMotion && window.anime && typeof window.anime.animate === 'function') {
+          const { animate, stagger } = window.anime;
+          animate('.demo-panel', { opacity: [0, 1], y: [18, 0], duration: 480, ease: 'outExpo' });
+          animate('.demo-bar', { scaleY: [0, 1], delay: stagger(35), duration: 650, ease: 'outBack' });
+        }
+      });
+      document.querySelector('.demo-close').addEventListener('click', () => demo.close());
+      demo.addEventListener('click', event => {
+        if (event.target === demo) demo.close();
+      });
+
+      if (reducedMotion || !window.anime || typeof window.anime.animate !== 'function') {
+        document.documentElement.classList.remove('js-motion');
+        return;
+      }
+
+      const { animate, stagger } = window.anime;
+      animate('.site-header', { opacity: [0, 1], y: [-12, 0], duration: 650, ease: 'outExpo' });
+      animate('.hero-copy > *', { opacity: [0, 1], y: [18, 0], delay: stagger(95), duration: 700, ease: 'outExpo' });
+      animate('.hero-visual', { opacity: [0, 1], y: [16, 0], scale: [.97, 1], duration: 850, ease: 'outExpo' });
+      animate('.bar', { scaleY: [0, 1], delay: stagger(45, { from: 'last' }), duration: 700, ease: 'outBack' });
+      animate('.orbit', { rotate: '1turn', duration: 42000, ease: 'linear', loop: true });
+      animate('.floating-note.top', { y: [-3, 5], rotate: [3, 1], duration: 2600, alternate: true, ease: 'inOutSine', loop: true });
+      animate('.floating-note.bottom', { y: [4, -4], rotate: [-3, -1], duration: 3100, alternate: true, ease: 'inOutSine', loop: true });
+
+      const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          animate(entry.target, { opacity: [0, 1], y: [20, 0], duration: 700, ease: 'outExpo' });
+          observer.unobserve(entry.target);
+        });
+      }, { threshold: .16 });
+      document.querySelectorAll('.reveal').forEach(element => observer.observe(element));
+    });
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="landing.html" aria-label="ChartSafe home">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      ChartSafe
+    </a>
+    <nav class="header-right" aria-label="Main navigation">
+      <a class="nav-link" href="#how-it-works">How it works <span aria-hidden="true">↓</span></a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> Every series deserves to be seen</div>
+        <h1 id="hero-title">Make your charts <em>clear to everyone.</em></h1>
+        <p class="hero-lede">A quick way to see how your chart looks through different color-vision views—and make the important differences easier to see.</p>
+        <div class="hero-actions">
+          <button class="button" id="try-sample" type="button">Try the sample chart <span aria-hidden="true">→</span></button>
+        </div>
+        <div class="trust-note">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1.5 13 3.4v4.1c0 3.2-2.2 5.5-5 7-2.8-1.5-5-3.8-5-7V3.4l5-1.9Z" stroke="currentColor" stroke-width="1.4"/><path d="m5.5 7.8 1.6 1.6 3.5-3.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Your chart stays yours. Preview locally, then choose how to recolor.
+        </div>
+      </div>
+
+      <div class="hero-visual" aria-label="Illustration of a chart preview with two distinct data series">
+        <div class="visual-glow" aria-hidden="true"></div>
+        <div class="orbit" aria-hidden="true"></div>
+        <div class="chart-window">
+          <div class="window-top">
+            <div class="window-brand"><span class="window-brand-mark" aria-hidden="true"><i></i><i></i><i></i></span> CHARTSAFE STUDIO</div>
+            <div class="window-status">Preview ready</div>
+          </div>
+          <div class="chart-content">
+            <p class="chart-kicker">Monthly overview</p>
+            <h2 class="chart-title">Workshop attendance</h2>
+            <p class="chart-subtitle">Illustrative participants per month</p>
+            <div class="chart" role="img" aria-label="Bar chart: Workshop A and Workshop B attendance from January to April">
+              <div class="chart-grid" aria-hidden="true">
+                <div class="gridline"><span>100</span></div>
+                <div class="gridline"><span>75</span></div>
+                <div class="gridline"><span>50</span></div>
+                <div class="gridline"><span>25</span></div>
+                <div class="gridline"><span>0</span></div>
+              </div>
+              <div class="bar-groups" aria-hidden="true">
+                <div class="bar-group"><i class="bar a" style="--bar-height:50%"></i><i class="bar b" style="--bar-height:70%"></i></div>
+                <div class="bar-group"><i class="bar a" style="--bar-height:64%"></i><i class="bar b" style="--bar-height:60%"></i></div>
+                <div class="bar-group"><i class="bar a" style="--bar-height:75%"></i><i class="bar b" style="--bar-height:90%"></i></div>
+                <div class="bar-group"><i class="bar a" style="--bar-height:90%"></i><i class="bar b" style="--bar-height:80%"></i></div>
+              </div>
+              <div class="xlabels" aria-hidden="true"><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span></div>
+            </div>
+            <div class="legend" aria-hidden="true"><span><i></i>Workshop A</span><span><i></i>Workshop B</span></div>
+            <div class="window-footer"><span>Original chart · 960 × 640</span><strong>Same data. Clearer palette.</strong></div>
+          </div>
+        </div>
+        <div class="floating-note top">
+          <span class="note-icon" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 18 18" fill="none"><path d="M3 13.5 7 9.5l2.8 2.8L15 7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.5 7H15v3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="note-copy"><strong>See the difference</strong><small>Try 3 color-vision simulations</small></span>
+        </div>
+        <div class="floating-note bottom">
+          <span class="note-icon orange" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 18 18" fill="none"><path d="M9 2.2 11 6.3l4.5.7-3.2 3.2.8 4.5L9 12.6l-4.1 2.1.8-4.5L2.5 7l4.5-.7L9 2.2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></span>
+          <span class="note-copy"><strong>Keep your story intact</strong><small>Check labels and data as you go</small></span>
+        </div>
+        <svg class="scribble" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M8 29c8-16 15-13 16-4 .8 7 5 6 8-2 2-6 5-7 8-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="m34 16 7 2-2 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+    </section>
+
+    <div class="proof-strip" aria-label="ChartSafe highlights">
+      <div class="proof-inner">
+        <div class="proof-label">Thoughtful chart checks, without the complicated workflow.</div>
+        <div class="proof-items">
+          <div class="proof-item"><span class="proof-check" aria-hidden="true">✓</span> PNG chart upload</div>
+          <div class="proof-item"><span class="proof-check" aria-hidden="true">✓</span> Instant vision previews</div>
+          <div class="proof-item"><span class="proof-check" aria-hidden="true">✓</span> Original stays unchanged</div>
+        </div>
+      </div>
+    </div>
+
+    <section class="section" id="how-it-works" aria-labelledby="features-title">
+      <div class="section-heading reveal">
+        <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> A clearer picture, in a few clicks</div>
+        <h2 id="features-title">Keep the data.<br>Change the perspective.</h2>
+        <p>ChartSafe helps you explore your chart’s color contrast, compare an updated palette, and keep the information that matters in focus.</p>
+      </div>
+      <div class="feature-grid">
+        <article class="feature-card reveal">
+          <span class="feature-number">01 / EXPLORE</span><span class="feature-arrow" aria-hidden="true">↗</span>
+          <span class="feature-icon" aria-hidden="true"><svg width="21" height="21" viewBox="0 0 22 22" fill="none"><path d="M3 18.5V11m5 7.5V5m5 13.5v-9m5 9V3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+          <h3>Preview another view</h3>
+          <p>Switch between approximate color-vision simulations to see how chart colors may be perceived.</p>
+        </article>
+        <article class="feature-card reveal">
+          <span class="feature-number">02 / COMPARE</span><span class="feature-arrow" aria-hidden="true">↗</span>
+          <span class="feature-icon" aria-hidden="true"><svg width="21" height="21" viewBox="0 0 22 22" fill="none"><rect x="2.8" y="4" width="7" height="14" rx="1.5" stroke="currentColor" stroke-width="1.7"/><rect x="12.2" y="4" width="7" height="14" rx="1.5" stroke="currentColor" stroke-width="1.7"/><path d="M6.3 9h.1m9.3 4h.1" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span>
+          <h3>Compare side by side</h3>
+          <p>Keep the original visible while you review a corrected chart in the same vision mode.</p>
+        </article>
+        <article class="feature-card reveal">
+          <span class="feature-number">03 / KEEP CHECKING</span><span class="feature-arrow" aria-hidden="true">↗</span>
+          <span class="feature-icon" aria-hidden="true"><svg width="21" height="21" viewBox="0 0 22 22" fill="none"><path d="M11 2.8 18 5.5v5.7c0 4-2.9 6.9-7 8.8-4.1-1.9-7-4.8-7-8.8V5.5l7-2.7Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m7.8 10.8 2.1 2.1 4.5-4.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <h3>Protect the whole story</h3>
+          <p>Check labels, values, and chart context after recoloring. A clearer palette should keep the data clear, too.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section reveal" aria-labelledby="cta-title" style="padding-top:0">
+      <div class="callout">
+        <div class="callout-copy">
+          <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> Start with a chart</div>
+          <h2 id="cta-title">Make your next chart easier to read.</h2>
+          <p>Bring a PNG, explore a different view, and see what stands out.</p>
+        </div>
+        <a class="button" href="index.html">Open ChartSafe <span aria-hidden="true">→</span></a>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="sample-dialog" id="sample-demo" aria-labelledby="demo-title">
+    <div class="demo-panel">
+      <div class="demo-heading">
+        <div>
+          <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> SAME DATA, TWO PALETTES</div>
+          <h2 id="demo-title">Try the sample chart</h2>
+          <p>Compare the original sample with its prepared, color-distinct palette.</p>
+        </div>
+        <button class="demo-close" type="button" aria-label="Close sample chart demo">×</button>
+      </div>
+      <div class="demo-grid">
+        <article class="demo-card demo-original">
+          <div class="demo-card-head"><strong>Original</strong><span>Sample palette</span></div>
+          <div class="demo-chart" role="img" aria-label="Original sample chart showing monthly workshop attendance">
+            <div class="demo-gridlines" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="demo-ylabels" aria-hidden="true"><span>100</span><span>75</span><span>50</span><span>25</span><span>0</span></div>
+            <div class="demo-groups" aria-hidden="true">
+              <div class="demo-group"><i class="demo-bar a" style="--bar-height:50%"></i><i class="demo-bar b" style="--bar-height:70%"></i></div>
+              <div class="demo-group"><i class="demo-bar a" style="--bar-height:65%"></i><i class="demo-bar b" style="--bar-height:60%"></i></div>
+              <div class="demo-group"><i class="demo-bar a" style="--bar-height:75%"></i><i class="demo-bar b" style="--bar-height:90%"></i></div>
+              <div class="demo-group"><i class="demo-bar a" style="--bar-height:90%"></i><i class="demo-bar b" style="--bar-height:80%"></i></div>
+            </div>
+            <div class="demo-xlabels" aria-hidden="true"><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span></div>
+          </div>
+          <div class="demo-legend" aria-hidden="true"><span><i></i>Workshop A</span><span><i></i>Workshop B</span></div>
+        </article>
+        <article class="demo-card demo-recolored">
+          <div class="demo-card-head"><strong>Prepared palette</strong><span>Same chart data</span></div>
+          <div class="demo-chart" role="img" aria-label="Prepared sample chart showing the same monthly workshop attendance with a blue and amber palette">
+            <div class="demo-gridlines" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="demo-ylabels" aria-hidden="true"><span>100</span><span>75</span><span>50</span><span>25</span><span>0</span></div>
+            <div class="demo-groups" aria-hidden="true">
+              <div class="demo-group"><i class="demo-bar a" style="--bar-height:50%"></i><i class="demo-bar b" style="--bar-height:70%"></i></div>
+              <div class="demo-group"><i class="demo-bar a" style="--bar-height:65%"></i><i class="demo-bar b" style="--bar-height:60%"></i></div>
+              <div class="demo-group"><i class="demo-bar a" style="--bar-height:75%"></i><i class="demo-bar b" style="--bar-height:90%"></i></div>
+              <div class="demo-group"><i class="demo-bar a" style="--bar-height:90%"></i><i class="demo-bar b" style="--bar-height:80%"></i></div>
+            </div>
+            <div class="demo-xlabels" aria-hidden="true"><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span></div>
+          </div>
+          <div class="demo-legend" aria-hidden="true"><span><i></i>Workshop A</span><span><i></i>Workshop B</span></div>
+        </article>
+      </div>
+      <p class="demo-footnote">This prepared example demonstrates a palette comparison; it is not an automated correction. Try your own PNG in the studio to explore color-vision simulations and recoloring.</p>
+    </div>
+  </dialog>
+
+  <footer class="site-footer">
+    <a class="brand footer-brand" href="landing.html">ChartSafe</a>
+    <span>Made for clearer communication.</span>
+    <nav class="footer-links" aria-label="Footer navigation">
+      <a href="#how-it-works">How it works</a>
+      <a href="index.html">Open studio ↗</a>
+    </nav>
+    <div class="footer-legal">
+      <p>© 2026 ChartSafe. All rights reserved.</p>
+      <p>Created by Manish, Deb &amp; Ayush.</p>
+    </div>
+  </footer>
+</body>
+</html>

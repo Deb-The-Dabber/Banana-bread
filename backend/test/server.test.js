@@ -108,3 +108,15 @@ test('serves the standalone page at both local app routes', async () => {
   assert.equal(standalone.status, 200);
   assert.equal(await standalone.text(), appHtml);
 });
+
+test('serves the landing page and its locally installed Anime.js bundle', async () => {
+  const landing = await fetch(`${baseUrl}/landing.html`);
+  assert.equal(landing.status, 200);
+  assert.match(landing.headers.get('content-type'), /text\/html/);
+  assert.match(await landing.text(), /src="\/animejs\.js"/);
+
+  const anime = await fetch(`${baseUrl}/animejs.js`);
+  assert.equal(anime.status, 200);
+  assert.match(anime.headers.get('content-type'), /javascript/);
+  assert.ok((await anime.arrayBuffer()).byteLength > 10_000);
+});
