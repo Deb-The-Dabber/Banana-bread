@@ -366,9 +366,9 @@ const $ = id => document.getElementById(id);
 const state = {original:null, corrected:null, mode:'normal', sample:false, generated:false, groups:null, aiBusy:false, revision:0, correctedRevision:0};
 const notes = {
   normal:'Both images are shown in their true colors.',
-  deuteranopia:'The original keeps its true colors. The right preview shows an approximate simulation with absent medium-wavelength (M) cone function. Previews only — uploaded and downloaded files are unchanged.',
-  protanopia:'The original keeps its true colors. The right preview shows an approximate simulation with absent long-wavelength (L) cone function. Previews only — uploaded and downloaded files are unchanged.',
-  tritanopia:'The original keeps its true colors. The right preview shows an approximate severe blue-yellow deficiency simulation; this model does not precisely represent tritanopia. Previews only — uploaded and downloaded files are unchanged.'
+  deuteranopia:'The original keeps its true colors. The right preview shows an approximate simulation with absent medium-wavelength (M) cone function. The download uses the selected view.',
+  protanopia:'The original keeps its true colors. The right preview shows an approximate simulation with absent long-wavelength (L) cone function. The download uses the selected view.',
+  tritanopia:'The original keeps its true colors. The right preview shows an approximate severe blue-yellow deficiency simulation; this model does not precisely represent tritanopia. The download uses the selected view.'
 };
 function status(message, kind='') { $('status').textContent=message; $('status').className='status '+kind; }
 function controls() {
@@ -403,7 +403,7 @@ function render() {
   $('corrected-meta').textContent=state.corrected?(state.sample?'Prepared example':state.generated?'Generated in browser':'PNG loaded'):(simulating&&state.original?'Simulation only':'Awaiting result');
   $('result-title').textContent=state.corrected?'Corrected image ready to download':'Compare with confidence';
   $('result-note').textContent=state.corrected
-    ?'Exports the PNG in its true colors. Check labels and data in both images.'
+    ?(simulating?`Exports the corrected PNG with the ${modeNames[state.mode]} preview applied.`:'Exports the corrected PNG in its true colors.')+' Check labels and data in both images.'
     :'Load a chart to generate its corrected version and download the PNG.';
   controls();
 }
@@ -515,7 +515,23 @@ document.querySelectorAll('input[name="vision"]').forEach(r=>r.addEventListener(
 ['dragleave','drop'].forEach(event=>$('dropzone').addEventListener(event,e=>{e.preventDefault();$('dropzone').classList.remove('dragging');}));
 $('dropzone').addEventListener('drop',e=>loadOriginal(e.dataTransfer.files[0]));
 window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
-$('download').addEventListener('click',()=>{if(!state.corrected)return;const url=URL.createObjectURL(state.corrected.blob);const a=document.createElement('a');a.href=url;a.download='chartsafe-corrected.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+async function downloadCorrected() {
+  if(!state.corrected)return;
+  const {width,height,pixels}=state.corrected;
+  const mode=state.mode;
+  let blob=state.corrected.blob;
+  if(mode!=='normal'){
+    const output=ChartSafeSimulation.simulate(pixels.data,mode);
+    const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+    canvas.getContext('2d').putImageData(new ImageData(output,width,height),0,0);
+    blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+    if(!blob){status('Could not encode the corrected PNG.','error');return;}
+  }
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;
+  a.download=mode==='normal'?'chartsafe-corrected.png':`chartsafe-corrected-${mode}.png`;
+  a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+$('download').addEventListener('click',downloadCorrected);
 
 /* --- AI chart review (optional, consent-gated) ---
    The chart is uploaded only after the user approves the consent dialog,

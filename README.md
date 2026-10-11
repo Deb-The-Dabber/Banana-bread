@@ -6,9 +6,9 @@ get an automatically generated corrected version (dominant colors remapped
 to a colorblind-safe palette), preview both under approximate
 deuteranopia/protanopia/tritanopia simulations, and download the corrected
 PNG. The **Original** box always keeps its true colors; the selected vision
-view is applied only to the right preview. Optionally, a consent-gated
-**AI chart review** adds model-generated findings next to pixel-measured
-color-pair checks.
+view is applied to the right preview and the downloaded corrected PNG.
+Optionally, a consent-gated **AI chart review** adds model-generated
+findings next to pixel-measured color-pair checks.
 
 The page is fully client-side — decoding, recoloring, and the download are
 all local, no image is ever uploaded, and it makes no network requests.
