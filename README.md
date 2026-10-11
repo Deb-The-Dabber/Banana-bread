@@ -2,15 +2,18 @@
 
 ChartSafe is a small tool for checking how a PNG chart reads for people with
 color-vision deficiencies. Everything runs in your browser: load a PNG,
-preview it under approximate deuteranopia/protanopia/tritanopia simulations,
-and compare it side by side against a corrected PNG (one you load yourself,
-or the prepared sample pair). The **Original** box always keeps its true
-colors; the selected vision view is applied only to the right preview.
+get an automatically generated corrected version (dominant colors remapped
+to a colorblind-safe palette), preview both under approximate
+deuteranopia/protanopia/tritanopia simulations, and download the corrected
+PNG. The **Original** box always keeps its true colors; the selected vision
+view is applied only to the right preview.
 
-The page is fully client-side: no image is ever uploaded, and it makes no
-network requests. There is no recoloring button — bring your own corrected
-PNG (for example one produced with the standalone API below) or use the
-sample pair to explore the comparison.
+The page is fully client-side — decoding, recoloring, and the download are
+all local, no image is ever uploaded, and it makes no network requests.
+There is no recoloring button: the corrected copy is generated automatically
+when a chart is loaded. You can override it with your own corrected PNG via
+the *Load corrected PNG* input, and the prepared sample pair remains a
+curated demonstration.
 
 **What it is not:** an accessibility certification. The simulations are
 mathematical approximations (Machado, Oliveira & Fernandes 2009, severity
@@ -104,14 +107,17 @@ can read the report header. Everything else gets 403.
 
 ## How the recoloring works (and what it cannot do)
 
-The API builds a histogram of chromatic (saturated, mid-luminance,
-sufficiently opaque) pixels, clusters the dominant colors, and pulls each
-matched pixel toward the closest entry of a fixed six-color accessible
-palette (Okabe–Ito). Cluster → palette assignment is an optimal injective
-match by redmean color distance over the *set* of detected colors, so it
-does not depend on which region happens to have more pixels: the same chart
-colors map to the same palette entries across charts, and red maps toward
-the reddish palette entry rather than an arbitrary slot.
+The same heuristic ships twice — in the page (so it works with no backend)
+and in the optional API — and `backend/test/frontend.test.js` asserts both
+implementations produce byte-identical pixels for the same input, so they
+cannot drift apart. It builds a histogram of chromatic (saturated,
+mid-luminance, sufficiently opaque) pixels, clusters the dominant colors,
+and pulls each matched pixel toward the closest entry of a fixed six-color
+accessible palette (Okabe–Ito). Cluster → palette assignment is an optimal
+injective match by redmean color distance over the *set* of detected
+colors, so it does not depend on which region happens to have more pixels:
+the same chart colors map to the same palette entries across charts, and
+red maps toward the reddish palette entry rather than an arbitrary slot.
 
 Known limits, by design:
 
@@ -142,12 +148,14 @@ CORS allowlist + preflight + report-header exposure, report schema and
 determinism, palette-assignment stability, grayscale/16-bit normalization,
 static routes and the legacy redirect, and — by extracting the inline
 script from the shipped `docs/index.html` — the simulation math (against an
-independent transcription of the published formulas), the rule that the
-Original box is never simulated, the absence of any recoloring-service UI,
-and static markup assertions. The full UI flow was additionally verified in
-a headless Chromium (upload → vision tabs → sample → download state,
-including byte-exact constancy of the Original box across all tabs); those
-browser checks live outside the repo and are not part of `npm test`.
+independent transcription of the published formulas), the in-page recolorer
+(byte-identical to the backend algorithm, including on a real chart from
+`BananaHacks/`), the rule that the Original box is never simulated, and the
+absence of any recoloring-service UI. The full UI flow was additionally
+verified in a headless Chromium (upload → automatic generation → vision
+tabs → actual captured download of the corrected PNG, including byte-exact
+constancy of the Original box across all tabs); those browser checks live
+outside the repo and are not part of `npm test`.
 
 ## Privacy
 

@@ -50,6 +50,14 @@ function extractSimulationModule(source) {
   return source.slice(start, end + 5);
 }
 
+function extractModule(source, marker) {
+  const start = source.indexOf(marker);
+  assert.ok(start !== -1, `${marker} not found`);
+  const end = source.indexOf('})();', start);
+  assert.ok(end !== -1, `${marker} terminator not found`);
+  return source.slice(start, end + 5);
+}
+
 function runIsolated(code, globals = {}) {
   const context = vm.createContext({ ...globals });
   vm.runInContext(code, context);
@@ -171,6 +179,75 @@ test('the shipped markup no longer dangles score UI that no backend implements',
     assert.ok(!html.includes(gone), `docs/index.html still mentions ${gone}`);
   }
   assert.ok(html.includes('not a certification of accessibility'), 'the non-certification disclaimer must stay');
+});
+
+test('the in-page recolorer matches the backend algorithm byte for byte', () => {
+  const { PNG } = require('pngjs');
+  const { recolorPng } = require('../server');
+  const RECOLOR = vm.runInContext(
+    `${extractModule(script, 'const RECOLOR = (() => {')}\nRECOLOR`,
+    vm.createContext({})
+  );
+  const recolor = RECOLOR.recolor;
+  const fixtures = [];
+
+  /* Mixed fixture: white, chromatic red, half-transparent chromatic, neutral gray. */
+  {
+    const png = new PNG({ width: 24, height: 12 });
+    const colors = [[255, 255, 255, 255], [196, 92, 80, 255], [114, 149, 69, 128], [128, 128, 128, 255]];
+    for (let y = 0; y < png.height; y++) {
+      for (let x = 0; x < png.width; x++) {
+        png.data.set(colors[x < 6 ? 0 : x < 12 ? 1 : x < 18 ? 2 : 3], (y * png.width + x) * 4);
+      }
+    }
+    fixtures.push(['mixed sample', PNG.sync.write(png)]);
+  }
+  /* Three-series chart with a dominant region. */
+  {
+    const png = new PNG({ width: 10, height: 1400 });
+    for (let i = 0; i < 10000; i++) png.data.set([196, 60, 40, 255], i * 4);
+    for (let i = 10000; i < 11000; i++) png.data.set([40, 90, 200, 255], i * 4);
+    for (let i = 11000; i < 12000; i++) png.data.set([40, 160, 80, 255], i * 4);
+    fixtures.push(['three-series', PNG.sync.write(png)]);
+  }
+  /* No chromatic pixels at all. */
+  {
+    const png = new PNG({ width: 8, height: 8 });
+    for (let i = 0; i < 64; i++) png.data.set([120, 120, 120, 255], i * 4);
+    fixtures.push(['all-gray', PNG.sync.write(png)]);
+  }
+  /* A real chart from the repo (matplotlib colors, anti-aliasing, 2400x1200). */
+  const realChart = path.join(__dirname, '..', '..', 'BananaHacks', 'chart_01.png');
+  if (fs.existsSync(realChart)) fixtures.push(['real chart', fs.readFileSync(realChart)]);
+
+  assert.ok(fixtures.length >= 3, 'expected several fixtures');
+
+  for (const [name, buffer] of fixtures) {
+    const input = PNG.sync.read(buffer);
+    const inputPixels = new Uint8ClampedArray(input.data);
+    const backend = PNG.sync.read(recolorPng(buffer).png);
+    const backendReport = recolorPng(buffer).report;
+
+    const before = [...inputPixels];
+    const { data: frontend, colorGroups } = recolor(inputPixels);
+    assert.equal(inputPixels.length, before.length, `${name}: input length changed`);
+    assert.ok(before.every((v, i) => v === inputPixels[i]), `${name}: input pixels were mutated`);
+
+    assert.equal(frontend.length, backend.data.length, `${name}: output length differs`);
+    for (let i = 0; i < frontend.length; i++) {
+      assert.equal(frontend[i], backend.data[i], `${name}: pixel differs at ${i} (frontend ${frontend[i]} vs backend ${backend.data[i]})`);
+    }
+    assert.equal(colorGroups, backendReport.color_groups, `${name}: color group count differs`);
+  }
+});
+
+test('auto-generation is wired into the chart load flow', () => {
+  assert.match(script, /recolorItem\(item\)/);
+  assert.match(script, /RECOLOR\.recolor\(data\)/);
+  assert.match(script, /'Generated in browser'/);
+  assert.match(script, /state\.generated=true/);
+  /* The generated blob must flow into the download path unchanged. */
+  assert.match(script, /URL\.createObjectURL\(state\.corrected\.blob\)/);
 });
 
 test('frontend assets are consolidated: no orphaned duplicates, legacy route redirects', () => {
