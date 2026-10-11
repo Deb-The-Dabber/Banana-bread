@@ -1,83 +1,344 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ChartSafe — Compare your charts</title>
-  <link rel="stylesheet" href="styles.css">
-  <script src="simulation.js" defer></script>
-  <script src="app.js" defer></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ChartSafe — A clearer picture for everyone</title>
+<style>
+:root{--ink:#203b36;--muted:#64736c;--paper:#f7f8f2;--line:#dde3d8;--green:#245a47;--lime:#dcf392;--white:#fff;--orange:#b84d2e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5}
+button,input{font:inherit}
+button,a,label,input,summary{-webkit-tap-highlight-color:transparent}
+button,summary{cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.45}
+button{transition:background .15s,transform .15s}
+button:not(:disabled):hover{filter:brightness(.95)}
+:focus-visible{outline:3px solid #ab4b1b;outline-offset:4px}
+a{color:inherit}
+header,main,footer{max-width:1440px;margin:auto}
+.topbar{height:88px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:0 48px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-size:25px;font-weight:750;letter-spacing:-1px}
+.mark{display:flex;align-items:end;gap:3px;height:25px}
+.mark i{width:6px;background:var(--green);border-radius:2px}
+.mark i:nth-child(1){height:14px}.mark i:nth-child(2){height:23px}.mark i:nth-child(3){height:18px}
+.beta{font-size:9px;letter-spacing:1px;background:var(--lime);padding:3px 6px;border-radius:4px;margin-left:2px}
+.event,.eyebrow,.step-label,.intro-art span,.how article>span{font-size:10px;letter-spacing:1.6px;font-weight:700}
+.event{color:var(--muted)}.about-link{font-size:13px;text-decoration:none}
+main{padding:0 48px}
+.intro{display:flex;justify-content:space-between;align-items:center;padding:48px 0 40px;gap:32px}
+.eyebrow{display:flex;align-items:center;gap:8px}
+.eyebrow>span{width:6px;height:6px;background:var(--green);border-radius:50%}
+h1{font-size:clamp(38px,4.3vw,60px);font-weight:500;letter-spacing:-2.5px;line-height:1.04;margin:16px 0 18px}
+h1 em{font-family:Georgia,serif;font-weight:400;color:var(--green)}
+.intro p{color:var(--muted);font-size:14px;line-height:1.7;margin:0}
+.intro-art{width:280px;transform:rotate(3deg);border:1px solid #d3dbc7;background:#eaf0df;border-radius:12px;padding:21px 25px;flex-shrink:0;box-shadow:7px 9px 0 #e1e7d5}
+.intro-art span{font-size:8px;letter-spacing:1px}
+.mini-bars{display:flex;align-items:end;gap:12px;height:105px;border-bottom:1px solid #b8c6a6;margin:15px 0 8px;padding:0 8px}
+.mini-bars i{width:28px;border-radius:4px 4px 0 0;background:var(--green);height:60%}
+.mini-bars i:nth-child(2n){background:#df9370;height:85%}.mini-bars i:nth-child(3){height:45%;background:#6f91a0}.mini-bars i:nth-child(4){height:65%}.mini-bars i:nth-child(5){height:90%;background:#6f91a0}.mini-bars i:nth-child(6){height:75%}
+.workspace{background:var(--white);border:1px solid var(--line);border-radius:16px;display:grid;grid-template-columns:262px minmax(0,1fr);overflow:hidden;box-shadow:0 10px 25px #233b3510}
+.controls{background:#fbfcf8;padding:26px 22px;border-right:1px solid var(--line)}
+.step-label{font-size:9px;letter-spacing:1.2px;display:flex;align-items:center;gap:7px;color:var(--muted)}
+.step-label>span{font-size:9px;letter-spacing:0;border:1px solid var(--line);border-radius:50%;width:22px;height:22px;display:grid;place-items:center;background:white}
+h2{font-size:18px;font-weight:600;letter-spacing:-.45px;margin:12px 0 8px}
+.small{font-size:12px}.muted{color:var(--muted)}
+.dropzone{position:relative;border:1px dashed #9fad9d;border-radius:10px;min-height:164px;display:flex;align-items:center;justify-content:center;flex-direction:column;margin:20px 0 10px;padding:12px;cursor:pointer;background:white;gap:4px}
+.dropzone:hover,.dropzone.dragging{background:#eef5e1;border-color:var(--green)}
+.dropzone:focus-within,.file-button:focus-within{outline:3px solid #ab4b1b;outline-offset:3px}
+.dropzone input,.file-button input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.dropzone strong{font-size:13px}.dropzone>span{font-size:12px;color:var(--muted)}
+.dropzone .upload-icon{font-size:25px;color:var(--green);background:#edf3e5;width:36px;height:36px;display:grid;place-items:center;border-radius:8px;margin-bottom:5px}
+.dropzone .file-limit{font-size:9px;margin-top:7px}
+.text-button{background:none;border:0;font-size:12px;color:var(--green);width:100%;padding:8px}
+.text-button span{margin-left:14px}.divider{height:1px;background:var(--line);margin:22px 0}
+.primary,.secondary{border:0;border-radius:7px;padding:11px 12px;width:100%;font-size:12px;font-weight:600;display:flex;justify-content:center;align-items:center;gap:12px}
+.primary{background:var(--green);color:white;margin:15px 0 9px}
+.secondary{border:1px solid var(--line);background:white;color:var(--ink)}
+.file-button{position:relative;cursor:pointer}.file-button:has(input:disabled){opacity:.45;cursor:not-allowed}
+.settings{margin-top:18px;font-size:11px}.settings summary{color:var(--green);padding:5px 0}
+.settings>label{display:block;margin:12px 0 5px}
+.settings input{width:100%;font-size:11px;padding:9px;border:1px solid #a9b7ad;border-radius:5px}
+.privacy{display:flex;gap:9px;margin-top:22px;color:var(--muted);font-size:10px;line-height:1.6}.privacy p{margin:0}
+.studio{padding:26px;min-width:0}
+.studio-heading{display:flex;justify-content:space-between;align-items:start;gap:15px}
+.studio-heading h2{margin-top:10px}
+.badge{font-size:9px;background:#f0f3eb;color:#52634f;padding:6px 8px;border-radius:5px;white-space:nowrap}
+.vision{border:0;padding:0;margin:22px 0 0;min-width:0}
+.vision legend{font-size:11px;font-weight:600;margin-bottom:8px}
+.vision-options{display:flex;background:#f2f4ed;border:1px solid #e5e8e0;padding:4px;border-radius:8px;gap:3px}
+.vision-options label{position:relative;flex:1;text-align:center;cursor:pointer;font-size:11px}
+.vision-options input{position:absolute;opacity:0}
+.vision-options span{display:block;padding:8px 5px;border-radius:5px}
+.vision-options input:checked+span{background:var(--green);color:white;box-shadow:0 2px 5px #0001}
+.vision-options input:focus-visible+span{outline:3px solid #ab4b1b;outline-offset:2px}
+.view-note{font-size:11px;min-height:17px;color:var(--muted);margin:10px 0 19px}
+.comparison{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.chart-card{border:1px solid var(--line);border-radius:9px;overflow:hidden;min-width:0}
+.card-title{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;background:#fafbf7;border-bottom:1px solid var(--line);gap:8px}
+.card-title h3{font-size:12px;margin:0;display:flex;align-items:center;gap:7px}
+.card-title>span{font-size:9px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:50%;background:#a97251}.dot.corrected{background:var(--green)}
+.canvas-wrap{min-height:250px;aspect-ratio:1.35;display:flex;align-items:center;justify-content:center;padding:12px;background:white;overflow:hidden}
+.canvas-wrap canvas{width:100%;height:100%;object-fit:contain}
+.empty{text-align:center;color:var(--muted);font-size:11px;padding:10px}
+.empty>span{display:block;font-size:33px;color:#a1b493;margin-bottom:10px}
+.empty strong{font-size:13px;font-weight:500;color:var(--ink)}.empty p{max-width:185px;margin:8px auto}
+.status{font-size:11px;padding:12px 14px;border-radius:6px;background:#f1f5e9;color:#456044;margin:16px 0;overflow-wrap:anywhere}
+.status.error{background:#fff0e9;color:#963d23}.status.warn{background:#fff7e0;color:#7a5a12}
+.row-label{font-size:10px;letter-spacing:1.4px;font-weight:700;color:var(--muted);margin:22px 0 10px}.row-label span{font-weight:400;letter-spacing:0}
+.sim-heading{margin-top:0}.status.busy{background:#edf3fa;color:#315578}
+.result-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:2px}
+.result-footer strong{font-size:12px;font-weight:600}.result-footer p{font-size:10px;color:var(--muted);margin:5px 0}
+.download{white-space:nowrap;background:var(--lime);border:1px solid #c6dd83;border-radius:6px;color:var(--ink);font-size:11px;padding:10px 13px;font-weight:600}
+.download span{margin-left:6px}
+.simulation-disclaimer{font-size:9px;color:var(--muted);line-height:1.6;margin:19px 0 0}
+.how{padding:43px 0;display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:28px}
+.how .eyebrow{font-size:8px;letter-spacing:1px}.how h2{font-size:22px}
+.how article>span{font-size:8px;color:var(--green)}
+.how h3{font-size:13px;font-weight:600;margin:8px 0}
+.how p{font-size:11px;color:var(--muted);line-height:1.7;margin:0}
+footer{border-top:1px solid var(--line);padding:22px 48px;display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:10px}
+.small-brand{font-size:17px;color:var(--ink)}[hidden]{display:none!important}
+@media(min-width:1500px){.intro{padding-top:62px;padding-bottom:48px}.canvas-wrap{min-height:300px}}
+@media(max-width:1050px){main{padding:0 25px}.topbar{padding:0 25px}.intro-art{width:235px}.workspace{grid-template-columns:230px minmax(0,1fr)}.controls{padding:22px 16px}.studio{padding:22px 16px}.comparison{gap:8px}.canvas-wrap{min-height:210px;padding:7px}.result-footer{align-items:start;flex-direction:column}.badge{display:none}}
+@media(max-width:760px){.topbar{height:72px;padding:0 20px}.event{display:none}main{padding:0 16px}.intro{padding:32px 5px}.intro-art{display:none}h1{font-size:45px}.workspace{grid-template-columns:1fr}.controls{border-right:0;border-bottom:1px solid var(--line);padding:23px}.dropzone{min-height:125px}.privacy{margin-top:14px}.studio{padding:23px 16px}.studio-heading h2{font-size:17px}.comparison{grid-template-columns:1fr}.canvas-wrap{min-height:220px;aspect-ratio:1.6}.vision-options span{padding:9px 3px;font-size:10px}.how{grid-template-columns:1fr 1fr;gap:25px 20px;padding:33px 6px}.how>div{grid-column:1/-1}.how article:last-child{grid-column:1/-1}footer{padding:20px;gap:12px;flex-wrap:wrap}footer>span:last-child{width:100%}.desktop{display:none}}
+</style>
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="./" aria-label="ChartSafe home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>ChartSafe</a>
+<a class="brand" href="./" aria-label="ChartSafe home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>ChartSafe<span class="beta">LAB</span></a>
+<span class="event">BANANA HACKS · 2026</span><a href="#how-it-works" class="about-link">How it works ↗</a>
 </header>
 <main>
-  <section class="intro">
-    <h1>Make your charts <em>easier to see.</em></h1>
-    <p>Upload a PNG, preview different color vision views, and compare a recolored version.</p>
-  </section>
-  <section class="workspace" aria-label="Chart workspace">
-    <aside class="controls">
-      <div class="step-label"><span>01</span> UPLOAD</div>
-      <h2>Choose a chart</h2>
-      <p class="muted small">Clean PNG bar and line charts work best.</p>
-      <label class="dropzone" id="dropzone">
-        <span class="upload-icon" aria-hidden="true">↑</span><strong>Choose a chart</strong><span>or drop a PNG here</span>
-        <span class="file-limit">Up to 10 MB · 8 megapixels</span>
-        <input id="upload" type="file" accept="image/png" aria-label="Upload original PNG chart">
-      </label>
-      <button id="sample" class="text-button">Try the sample chart <span aria-hidden="true">↗</span></button>
-      <div class="divider"></div>
-      <div class="step-label"><span>02</span> ADD A CORRECTION</div>
-      <p class="muted small">The selector previews your chart immediately. Connect a service to generate a correction.</p>
-      <button id="fix" class="primary" disabled>Recolor chart <span aria-hidden="true">→</span></button>
-      <details class="settings">
-        <summary>Connect recoloring service</summary>
-        <label for="endpoint">API endpoint</label>
-        <input id="endpoint" type="url" placeholder="http://127.0.0.1:8000/api/recolor" spellcheck="false">
-        <p class="small muted">Recolor sends the original PNG to this address. Use a service you trust.</p>
-      </details>
-      <details class="settings">
-        <summary>Already have a corrected PNG?</summary>
-        <p class="small muted">Import a recolored version of this same chart, with matching dimensions. This does not generate a correction.</p>
-        <label class="secondary file-button">Import corrected version
-          <input id="corrected-upload" type="file" accept="image/png" disabled aria-label="Import corrected version of the same chart">
-        </label>
-      </details>
-      <div class="privacy"><span aria-hidden="true">◉</span><p>This page doesn't save your images. Recolor sends the original to the service address you enter.</p></div>
-    </aside>
-    <div class="studio">
-      <div class="studio-heading">
-        <div><div class="step-label"><span>03</span> COMPARE</div><h2>See the difference</h2></div>
-        <span id="source-badge" class="badge">No image loaded</span>
-      </div>
-      <fieldset class="vision"><legend>Right panel: simulated color vision</legend>
-        <div class="vision-options">
-          <label><input type="radio" name="vision" value="normal" checked><span>Normal vision</span></label>
-          <label><input type="radio" name="vision" value="deuteranopia"><span>Deuteranopia</span></label>
-          <label><input type="radio" name="vision" value="protanopia"><span>Protanopia</span></label>
-          <label><input type="radio" name="vision" value="tritanopia"><span>Tritanopia*</span></label>
-        </div>
-      </fieldset>
-      <p id="vision-note" class="view-note">Original colors, with no simulation applied.</p>
-      <div class="comparison">
-        <article class="chart-card"><div class="card-title"><h3><span class="dot original"></span><span id="before-title">Original</span></h3><span id="original-meta">Awaiting PNG</span></div>
-          <div class="canvas-wrap"><canvas id="before" hidden role="img" aria-label="Original chart preview"></canvas>
-            <div class="empty" id="before-empty"><span aria-hidden="true">▥</span><strong>Your chart goes here</strong><p>Upload an image or try the sample.</p></div>
-          </div>
-        </article>
-        <article id="corrected-card" class="chart-card"><div class="card-title"><h3><span class="dot corrected"></span><span id="after-title">Recolored</span></h3><span id="corrected-meta">Awaiting result</span></div>
-          <div class="canvas-wrap"><canvas id="after" hidden role="img" aria-label="Recolored chart preview"></canvas>
-            <div class="empty" id="after-empty"><span aria-hidden="true">▥</span><strong>A new perspective</strong><p>Upload one PNG to preview it here.</p></div>
-          </div>
-        </article>
-      </div>
-      <div id="status" class="status" role="status" aria-live="polite">Upload a PNG or try the sample chart.</div>
-      <div class="result-footer"><button class="download" id="download" disabled>Download corrected PNG <span aria-hidden="true">↓</span></button></div>
-      <p class="simulation-disclaimer">Simulations are approximations and vary from individual experience. *The blue-yellow view uses a severe tritanomaly approximation. A recolored image is not a certification of accessibility.</p>
-    </div>
-  </section>
+<section class="intro"><div><div class="eyebrow"><span></span> EVERY SERIES DESERVES TO BE SEEN</div><h1>A clearer picture.<br><em>For everyone.</em></h1><p>Explore your chart through different color vision simulations.<br class="desktop"> Compare a recolored version without losing the story in your data.</p></div>
+<div class="intro-art" aria-hidden="true"><span class="art-label">A DIFFERENT PERSPECTIVE</span><div class="mini-bars"><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="art-bottom">Same data. More ways to see it.</span></div></section>
+<section class="workspace" aria-label="Chart workspace">
+<aside class="controls">
+<div class="step-label"><span>01</span> YOUR CHART</div><h2>Start with an image</h2><p class="muted small">Clean PNG bar and line charts work best.</p>
+<label class="dropzone" id="dropzone"><span class="upload-icon" aria-hidden="true">↑</span><strong>Choose a chart</strong><span>or drop a PNG here</span><span class="file-limit">Up to 10 MB · 8 megapixels</span><input id="upload" type="file" accept="image/png" aria-label="Upload original PNG chart"></label>
+<button id="sample" class="text-button">Try the sample chart <span aria-hidden="true">↗</span></button>
+<div class="divider"></div><div class="step-label"><span>02</span> CORRECTED VERSION</div><p class="muted small">Click Recolor to run ChartSafe, or load a corrected PNG. Add your chart in step 01 first.</p>
+<button id="fix" class="primary" disabled>Recolor chart <span aria-hidden="true">→</span></button>
+<label class="secondary file-button">Load corrected PNG<input id="corrected-upload" type="file" accept="image/png" disabled aria-label="Upload corrected PNG chart"></label>
+<details class="settings"><summary>Connect recoloring service</summary><label for="endpoint">API endpoint</label><input id="endpoint" type="url" placeholder="http://127.0.0.1:8000/api/recolor" spellcheck="false"><p class="small muted">Clicking Recolor sends your original PNG to this address. Use a service you trust.</p></details>
+<div class="privacy"><span aria-hidden="true">◉</span><p>Previews stay in your browser. Images are sent only when you use the recoloring service.</p></div>
+</aside>
+<div class="studio">
+<div class="studio-heading"><div><div class="step-label"><span>03</span> COMPARE & EXPLORE</div><h2>Your chart, through another lens</h2></div><span id="source-badge" class="badge">No image loaded</span></div>
+<fieldset class="vision"><legend>Simulated color vision</legend><div class="vision-options">
+<label><input type="radio" name="vision" value="normal" checked><span>Normal vision</span></label><label><input type="radio" name="vision" value="deuteranopia"><span>Deuteranopia</span></label><label><input type="radio" name="vision" value="protanopia"><span>Protanopia</span></label><label><input type="radio" name="vision" value="tritanopia"><span>Tritanopia*</span></label>
+</div></fieldset>
+<p id="vision-note" class="view-note">Original colors, with no simulation applied.</p>
+<div class="comparison">
+<article class="chart-card"><div class="card-title"><h3><span class="dot original"></span><span id="before-title">Original</span></h3><span id="original-meta">Awaiting PNG</span></div><div class="canvas-wrap"><canvas id="before" hidden role="img" aria-label="Original chart preview"></canvas><div class="empty" id="before-empty"><span aria-hidden="true">▥</span><strong>Your chart goes here</strong><p>Upload an image or try the sample.</p></div></div></article>
+<article id="corrected-card" class="chart-card"><div class="card-title"><h3><span class="dot corrected"></span><span id="after-title">Recolored</span></h3><span id="corrected-meta">Awaiting result</span></div><div class="canvas-wrap"><canvas id="after" hidden role="img" aria-label="Recolored chart preview"></canvas><div class="empty" id="after-empty"><span aria-hidden="true">▥</span><strong>A new perspective</strong><p>Click Recolor chart or load a corrected PNG.</p></div></div></article>
+</div>
+<div id="status" class="status" role="status" aria-live="polite">Ready when you are. Start with your chart or explore the sample.</div>
+<div class="result-footer"><div><strong id="result-title">Compare with confidence</strong><p id="result-note">Scores appear here after you recolor a chart.</p></div><button class="download" id="download" disabled>Download corrected PNG <span aria-hidden="true">↓</span></button></div>
+<p class="simulation-disclaimer">Simulations are approximations and vary from individual experience. *The blue-yellow view uses a severe tritanomaly approximation. A recolored image is not a certification of accessibility.</p>
+</div></section>
+<section id="how-it-works" class="how"><div><div class="eyebrow">SMALL CHANGES. CLEARER STORIES.</div><h2>Built around your chart.</h2></div><article><span>01 / UPLOAD</span><h3>Bring the original</h3><p>A clean PNG keeps the chart’s text, axes, and series easy to inspect.</p></article><article><span>02 / COMPARE</span><h3>Change your perspective</h3><p>Apply the same simulation to both images to compare the colors.</p></article><article><span>03 / EXPORT</span><h3>Take it with you</h3><p>Download the corrected image in its original colors, ready for your slides.</p></article></section>
 </main>
+<footer><span class="brand small-brand">ChartSafe</span><span>Made for clearer communication.</span><span>Manish · Deb · Ayush</span></footer>
+<script>
+'use strict';
+
+/* Machado, Oliveira & Fernandes (2009), severity 1.0 matrices.
+   Work in linear-light sRGB, not gamma-encoded canvas bytes.
+   Blue-yellow endpoint is a severe tritanomaly approximation. */
+const ChartSafeSimulation = (() => {
+  const matrices = {
+    deuteranopia: [.367322,.860646,-.227968,.280085,.672501,.047413,-.011820,.042940,.968881],
+    protanopia: [.152286,1.052583,-.204868,.114503,.786281,.099216,-.003882,-.048116,1.051998],
+    tritanopia: [1.255528,-.076749,-.178779,-.078411,.930809,.147602,.004733,.691367,.303900]
+  };
+  const linear = Float64Array.from({length:256}, (_, i) => {
+    const c = i / 255;
+    return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
+  });
+  function encode(c) {
+    c = Math.max(0, Math.min(1, c));
+    return Math.round(255 * (c <= .0031308 ? 12.92*c : 1.055*c**(1/2.4)-.055));
+  }
+  function simulate(bytes, mode) {
+    const out = new Uint8ClampedArray(bytes);
+    if (mode === 'normal') return out;
+    const m = matrices[mode];
+    if (!m) throw new Error('Unknown simulation mode.');
+    for (let i=0; i<out.length; i+=4) {
+      const r=linear[bytes[i]], g=linear[bytes[i+1]], b=linear[bytes[i+2]];
+      out[i]=encode(m[0]*r+m[1]*g+m[2]*b);
+      out[i+1]=encode(m[3]*r+m[4]*g+m[5]*b);
+      out[i+2]=encode(m[6]*r+m[7]*g+m[8]*b);
+    }
+    return out;
+  }
+  return {simulate};
+})();
+
+const $ = id => document.getElementById(id);
+const state = {report:null, original:null, corrected:null, mode:'normal', sample:false, revision:0, correctedRevision:0, busy:false, request:null};
+const notes = {
+  normal:'Original colors, with no simulation applied.',
+  deuteranopia:'Original stays in true colors. The right preview shows the selected simulation; uploaded files are unchanged.',
+  protanopia:'Original stays in true colors. The right preview shows the selected simulation; uploaded files are unchanged.',
+  tritanopia:'Original stays in true colors. The right preview shows an approximate severe blue-yellow deficiency simulation; uploaded files are unchanged.'
+};
+function lowestGap(s){return Math.min(s.normal,s.protanopia,s.deuteranopia,s.tritanopia);}
+function reportText(r){
+  if(!r.before)return r.note||'No scores available for this chart.';
+  const b=lowestGap(r.before), a=lowestGap(r.after), verdict=r.after.passes_all?'passes':'still fails';
+  if(r.note&&r.before.passes_all)return `Already distinguishable in all views (lowest color gap ${b.toFixed(1)}; 20+ passes). Image left unchanged.`;
+  return `Lowest color gap between series across all views: ${b.toFixed(1)} before, ${a.toFixed(1)} after (20+ passes). Result ${verdict}. Detected ${r.series_found} series.`;
+}
+function status(message, kind='') { $('status').textContent=message; $('status').className='status '+kind; }
+function controls() {
+  $('fix').disabled=!state.original || !$('endpoint').value.trim() || state.busy;
+  $('fix').textContent=state.busy?'Recoloring…':'Recolor chart →';
+  $('corrected-upload').disabled=!state.original || state.busy;
+  $('download').disabled=!state.corrected;
+  $('source-badge').textContent=state.sample?'Prepared sample':state.original?'Your chart':'No image loaded';
+}
+const modeNames={deuteranopia:'Deuteranopia',protanopia:'Protanopia',tritanopia:'Tritanopia'};
+function renderOne(canvasId, emptyId, item, mode, label) {
+  const canvas=$(canvasId); canvas.hidden=!item;
+  $(emptyId).hidden=!!item;
+  if (!item) return;
+  canvas.width=item.width; canvas.height=item.height;
+  const pixels=ChartSafeSimulation.simulate(item.pixels.data,mode);
+  canvas.getContext('2d').putImageData(new ImageData(pixels,item.width,item.height),0,0);
+  canvas.setAttribute('aria-label',`${label}, ${mode==='normal'?'true colors':mode+' simulation'}. Visual chart preview; data transcription is not available.`);
+}
+function render() {
+  const simulating=state.mode!=='normal';
+  renderOne('before','before-empty',state.original,'normal','Original chart');
+  renderOne('after','after-empty',state.corrected || (simulating?state.original:null),state.mode,state.corrected?'Recolored chart':'Simulated original chart');
+  $('corrected-card').hidden=!simulating;
+  $('before-title').textContent='Original';
+  $('after-title').textContent=simulating?(state.corrected?'Recolored · ':'Simulation · ')+modeNames[state.mode]:'Recolored';
+  $('vision-note').textContent=notes[state.mode];
+  $('original-meta').textContent=state.original?`${state.original.width} × ${state.original.height}`:'Awaiting PNG';
+  $('corrected-meta').textContent=state.corrected?(state.sample?'Prepared example':'PNG loaded'):simulating&&state.original?'Simulation only':'Awaiting result';
+  $('result-title').textContent=state.corrected?'Corrected image ready to download':'Compare with confidence';
+  $('result-note').textContent=state.corrected?(state.report?reportText(state.report):'Exports the unsimulated PNG. Accessibility scores have not been calculated.'):'Scores appear here after you recolor a chart.';
+  controls();
+}
+async function decodePNG(blob, name='chart.png') {
+  if (!blob.size || blob.size>10*1024*1024) throw new Error('Choose a non-empty PNG up to 10 MB.');
+  const header=new Uint8Array(await blob.slice(0,24).arrayBuffer());
+  if (header.length<24 || ![137,80,78,71,13,10,26,10].every((v,i)=>header[i]===v)) throw new Error('This file is not a PNG. Export your chart as PNG and try again.');
+  const view=new DataView(header.buffer); const width=view.getUint32(16), height=view.getUint32(20);
+  if (!width || !height || width*height>8000000 || width>8192 || height>8192) throw new Error('Choose a PNG up to 8 megapixels and 8192 pixels per side.');
+  const bitmap=await createImageBitmap(blob);
+  try {
+    const c=document.createElement('canvas');c.width=bitmap.width;c.height=bitmap.height;
+    const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(bitmap,0,0);
+    return {width:c.width,height:c.height,pixels:ctx.getImageData(0,0,c.width,c.height),blob,name};
+  } finally { bitmap.close(); }
+}
+function invalidate() {
+  state.report=null; state.revision++; state.correctedRevision++; state.request?.abort(); state.request=null; state.busy=false;
+}
+async function loadOriginal(file) {
+  if (!file) return;
+  invalidate();const rev=state.revision;
+  state.original=null; state.corrected=null;state.sample=false;render();status('Opening PNG…','busy');
+  try {const item=await decodePNG(file,file.name);if(rev!==state.revision)return;state.original=item;render();status('Chart loaded. Click Recolor chart, or load your own corrected PNG into the Recolored panel.');}
+  catch(e){if(rev===state.revision){render();status(e.message,'error');}}
+}
+/* Compares where "ink" (non-white pixels) sits in both images on a coarse grid.
+   Same chart, recolored => high overlap. Different chart => low overlap. Never blocks the upload. */
+const GRID=96;
+function inkMask(item){
+  const m=new Uint8Array(GRID*GRID), d=item.pixels.data, w=item.width, h=item.height;
+  for(let y=0;y<h;y++){
+    const row=Math.floor(y*GRID/h)*GRID;
+    for(let x=0;x<w;x++){
+      const i=(y*w+x)*4;
+      if(d[i+3]>128 && Math.min(d[i],d[i+1],d[i+2])<200) m[row+Math.floor(x*GRID/w)]=1;
+    }
+  }
+  return m;
+}
+function compareWarning(a,b){
+  const A=inkMask(a), B=inkMask(b); let inter=0, union=0;
+  for(let i=0;i<A.length;i++){ if(A[i]&&B[i])inter++; if(A[i]||B[i])union++; }
+  const overlap=union?inter/union:1;
+  if(overlap<0.5) return 'Loaded into the Recolored panel, but heads up: this looks like a different chart than the original (the layouts barely overlap).';
+  if(a.width!==b.width || a.height!==b.height) return `Loaded into the Recolored panel. The sizes differ (${a.width}×${a.height} vs ${b.width}×${b.height}), so the panels may not line up exactly.`;
+  return '';
+}
+async function loadCorrected(file) {
+  if (!file || !state.original || state.busy)return;
+  const rev=state.revision, ticket=++state.correctedRevision;
+  state.corrected=null;state.report=null;render();status('Opening corrected PNG…','busy');
+  try {
+    const item=await decodePNG(file,file.name);
+    if(rev!==state.revision || ticket!==state.correctedRevision)return;
+    state.corrected=item;state.sample=false;render();
+    const warning=compareWarning(state.original,item);
+    if(warning) status(warning,'warn');
+    else status('Corrected PNG loaded into the Recolored panel. Check labels and data in both images.');
+  } catch(e){if(rev===state.revision && ticket===state.correctedRevision)status(e.message,'error');}
+}
+function drawSample(colors) {
+  const c=document.createElement('canvas');c.width=960;c.height=640;const x=c.getContext('2d');
+  x.fillStyle='#fff';x.fillRect(0,0,960,640);x.fillStyle='#253b36';x.font='bold 30px Arial';x.fillText('Community workshop attendance',70,66);x.fillStyle='#64736c';x.font='18px Arial';x.fillText('Illustrative data · participants per month',70,99);
+  for(let n=0;n<=100;n+=25){const y=510-n*3.2;x.strokeStyle='#e5e8e4';x.lineWidth=1;x.beginPath();x.moveTo(95,y);x.lineTo(890,y);x.stroke();x.fillStyle='#63716a';x.font='17px Arial';x.fillText(n,48,y+6);}
+  const data=[[50,70],[65,60],[75,90],[90,80]];
+  data.forEach((values,i)=>{values.forEach((v,j)=>{x.fillStyle=colors[j];x.fillRect(145+i*190+j*57,510-v*3.2,44,v*3.2);});x.fillStyle='#45564e';x.font='19px Arial';x.fillText(['Jan','Feb','Mar','Apr'][i],165+i*190,543);});
+  ['Workshop A','Workshop B'].forEach((label,i)=>{x.fillStyle=colors[i];x.fillRect(255+i*245,588,18,18);x.fillStyle='#394b42';x.font='19px Arial';x.fillText(label,284+i*245,604);});
+  return new Promise(resolve=>c.toBlob(resolve,'image/png'));
+}
+async function sample() {
+  invalidate();const rev=state.revision;state.original=null;state.corrected=null;state.sample=true;render();status('Preparing example…','busy');
+  try {
+    const blobs=await Promise.all([drawSample(['#c45c50','#729545']),drawSample(['#0072b2','#e69f00'])]);
+    const images=await Promise.all(blobs.map((b,i)=>decodePNG(b,i?'sample-recolored.png':'sample-original.png')));
+    if(rev!==state.revision)return;[state.original,state.corrected]=images;render();
+    status('Prepared sample pair: identical chart data drawn with two palettes. This demonstrates the comparison; no AI or automatic correction was run.');
+  } catch(e){if(rev===state.revision)status(e.message,'error');}
+}
+async function fix() {
+  if(!state.original || state.busy)return;
+  let endpoint;
+  try {endpoint=new URL($('endpoint').value.trim());if(!['http:','https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password)throw new Error();}
+  catch{status('Enter a full HTTP or HTTPS API endpoint without credentials.','error');return;}
+  if(location.protocol==='https:' && endpoint.protocol==='http:'){status('This page uses HTTPS. Use an HTTPS API, or run both frontend and API locally over HTTP.','error');return;}
+  const rev=state.revision;const request=new AbortController();state.request=request;state.busy=true;state.corrected=null;state.report=null;state.correctedRevision++;render();status('Sending your chart to the recoloring service…','busy');
+  const timer=setTimeout(()=>request.abort(),90000);
+  try {
+    const body=new FormData();body.append('image',state.original.blob,state.original.name);
+    let response;
+    try {response=await fetch(endpoint.href,{method:'POST',body,signal:request.signal,credentials:'omit'});}
+    catch(e) {
+      if(e instanceof TypeError) throw new Error(`Could not contact the recoloring API at ${endpoint.href}. Confirm it is running and allows this page via CORS, or load a corrected PNG manually.`);
+      throw e;
+    }
+    if(!response.ok)throw new Error(`Service returned HTTP ${response.status}. Ask your teammate to check the backend logs.`);
+    if(!(response.headers.get('content-type')||'').toLowerCase().startsWith('image/png'))throw new Error('The service must return an image/png response. Check the backend integration docs.');
+    const item=await decodePNG(await response.blob(),'corrected.png');
+    if(rev!==state.revision)return;
+    if(item.width!==state.original.width || item.height!==state.original.height)throw new Error('The service changed the image dimensions. Expected a PNG matching the original size.');
+    try{state.report=JSON.parse(response.headers.get('X-ChartSafe-Report')||'null');}catch{state.report=null;}
+    state.corrected=item;state.sample=false;
+    status(state.report?'Recolored PNG received. '+reportText(state.report):'Recolored PNG received. Inspect the result in each view.');
+  } catch(e){if(rev===state.revision)status(e.name==='AbortError'?'The service timed out after 90 seconds. Try again once the backend is ready.':e.message,'error');}
+  finally {clearTimeout(timer);if(rev===state.revision){state.busy=false;state.request=null;render();}}
+}
+$('upload').addEventListener('change',e=>{loadOriginal(e.target.files[0]);e.target.value='';});
+$('corrected-upload').addEventListener('change',e=>{loadCorrected(e.target.files[0]);e.target.value='';});
+$('sample').addEventListener('click',sample);$('fix').addEventListener('click',fix);$('endpoint').addEventListener('input',controls);
+document.querySelectorAll('input[name="vision"]').forEach(r=>r.addEventListener('change',()=>{state.mode=r.value;render();}));
+['dragenter','dragover'].forEach(event=>$('dropzone').addEventListener(event,e=>{e.preventDefault();$('dropzone').classList.add('dragging');}));
+['dragleave','drop'].forEach(event=>$('dropzone').addEventListener(event,e=>{e.preventDefault();$('dropzone').classList.remove('dragging');}));
+$('dropzone').addEventListener('drop',e=>loadOriginal(e.dataTransfer.files[0]));
+window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
+$('download').addEventListener('click',()=>{if(!state.corrected)return;const url=URL.createObjectURL(state.corrected.blob);const a=document.createElement('a');a.href=url;a.download='chartsafe-corrected.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+$('endpoint').value=location.protocol.startsWith('http')?location.origin+'/api/recolor':'http://127.0.0.1:8000/api/recolor';
+controls();
+render();
+</script>
 </body>
 </html>

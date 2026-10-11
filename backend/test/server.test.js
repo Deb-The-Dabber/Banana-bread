@@ -98,12 +98,13 @@ test('exposes a health endpoint', async () => {
   assert.equal(sameOrigin.status, 200);
 });
 
-test('serves the ChartSafe app and standalone page locally', async () => {
+test('serves the standalone page at both local app routes', async () => {
   const app = await fetch(baseUrl);
   assert.equal(app.status, 200);
-  assert.match(await app.text(), /See the difference/);
+  const appHtml = await app.text();
+  assert.match(appHtml, /A clearer picture\.<br><em>For everyone\./);
 
   const standalone = await fetch(`${baseUrl}/chartsafe-v2-html.html`);
   assert.equal(standalone.status, 200);
-  assert.match(await standalone.text(), /Simulated color vision/);
+  assert.equal(await standalone.text(), appHtml);
 });
