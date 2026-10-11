@@ -121,23 +121,18 @@ footer{border-top:1px solid var(--line);padding:22px 48px;display:flex;justify-c
 <div class="divider"></div><div class="step-label"><span>02</span> CORRECTED VERSION</div><p class="muted small">Click Recolor to run ChartSafe, or load a corrected PNG. Add your chart in step 01 first.</p>
 <button id="fix" class="primary" disabled>Recolor chart <span aria-hidden="true">→</span></button>
 <label class="secondary file-button">Load corrected PNG<input id="corrected-upload" type="file" accept="image/png" disabled aria-label="Upload corrected PNG chart"></label>
-<details class="settings"><summary>Connect recoloring service</summary><label for="endpoint">API endpoint</label><input id="endpoint" type="url" placeholder="http://localhost:8000/api/recolor" spellcheck="false"><p class="small muted">Clicking Recolor sends your original PNG to this address. Use a service you trust.</p></details>
+<details class="settings"><summary>Connect recoloring service</summary><label for="endpoint">API endpoint</label><input id="endpoint" type="url" placeholder="http://127.0.0.1:8000/api/recolor" spellcheck="false"><p class="small muted">Clicking Recolor sends your original PNG to this address. Use a service you trust.</p></details>
 <div class="privacy"><span aria-hidden="true">◉</span><p>Previews stay in your browser. Images are sent only when you use the recoloring service.</p></div>
 </aside>
 <div class="studio">
 <div class="studio-heading"><div><div class="step-label"><span>03</span> COMPARE & EXPLORE</div><h2>Your chart, through another lens</h2></div><span id="source-badge" class="badge">No image loaded</span></div>
-<p class="row-label">TRUE COLORS <span>· these two panels never change when you switch simulations</span></p>
-<div class="comparison">
-<article class="chart-card"><div class="card-title"><h3><span class="dot original"></span>Original</h3><span id="original-meta">Awaiting PNG</span></div><div class="canvas-wrap"><canvas id="before" hidden role="img" aria-label="Original chart preview"></canvas><div class="empty" id="before-empty"><span aria-hidden="true">▥</span><strong>Your chart goes here</strong><p>Upload an image or try the sample.</p></div></div></article>
-<article class="chart-card"><div class="card-title"><h3><span class="dot corrected"></span>Recolored</h3><span id="corrected-meta">Awaiting result</span></div><div class="canvas-wrap"><canvas id="after" hidden role="img" aria-label="Recolored chart preview"></canvas><div class="empty" id="after-empty"><span aria-hidden="true">▥</span><strong>A new perspective</strong><p>Click Recolor chart or load a corrected PNG.</p></div></div></article>
-</div>
 <fieldset class="vision"><legend>Simulated color vision</legend><div class="vision-options">
 <label><input type="radio" name="vision" value="normal" checked><span>Normal vision</span></label><label><input type="radio" name="vision" value="deuteranopia"><span>Deuteranopia</span></label><label><input type="radio" name="vision" value="protanopia"><span>Protanopia</span></label><label><input type="radio" name="vision" value="tritanopia"><span>Tritanopia*</span></label>
 </div></fieldset>
 <p id="vision-note" class="view-note">Original colors, with no simulation applied.</p>
-<div id="sim-row" class="comparison" hidden>
-<article class="chart-card"><div class="card-title"><h3><span class="dot original"></span><span id="before-sim-title">Original, simulated</span></h3><span>Simulation only</span></div><div class="canvas-wrap"><canvas id="before-sim" hidden role="img" aria-label="Simulated original chart"></canvas><div class="empty" id="before-sim-empty"><span aria-hidden="true">▥</span><strong>No chart yet</strong><p>Upload a chart to see it through this lens.</p></div></div></article>
-<article class="chart-card"><div class="card-title"><h3><span class="dot corrected"></span><span id="after-sim-title">Recolored, simulated</span></h3><span>Simulation only</span></div><div class="canvas-wrap"><canvas id="after-sim" hidden role="img" aria-label="Simulated recolored chart"></canvas><div class="empty" id="after-sim-empty"><span aria-hidden="true">▥</span><strong>No recolored chart yet</strong><p>Click Recolor chart or load a corrected PNG.</p></div></div></article>
+<div class="comparison">
+<article class="chart-card"><div class="card-title"><h3><span class="dot original"></span><span id="before-title">Original</span></h3><span id="original-meta">Awaiting PNG</span></div><div class="canvas-wrap"><canvas id="before" hidden role="img" aria-label="Original chart preview"></canvas><div class="empty" id="before-empty"><span aria-hidden="true">▥</span><strong>Your chart goes here</strong><p>Upload an image or try the sample.</p></div></div></article>
+<article id="corrected-card" class="chart-card"><div class="card-title"><h3><span class="dot corrected"></span><span id="after-title">Recolored</span></h3><span id="corrected-meta">Awaiting result</span></div><div class="canvas-wrap"><canvas id="after" hidden role="img" aria-label="Recolored chart preview"></canvas><div class="empty" id="after-empty"><span aria-hidden="true">▥</span><strong>A new perspective</strong><p>Click Recolor chart or load a corrected PNG.</p></div></div></article>
 </div>
 <div id="status" class="status" role="status" aria-live="polite">Ready when you are. Start with your chart or explore the sample.</div>
 <div class="result-footer"><div><strong id="result-title">Compare with confidence</strong><p id="result-note">Scores appear here after you recolor a chart.</p></div><button class="download" id="download" disabled>Download corrected PNG <span aria-hidden="true">↓</span></button></div>
@@ -185,10 +180,10 @@ const ChartSafeSimulation = (() => {
 const $ = id => document.getElementById(id);
 const state = {report:null, original:null, corrected:null, mode:'normal', sample:false, revision:0, correctedRevision:0, busy:false, request:null};
 const notes = {
-  normal:'Choose a vision type to see how both charts look to someone with it. The panels above stay in true colors.',
-  deuteranopia:'Bottom row: approximate view with absent medium-wavelength (M) cone function.',
-  protanopia:'Bottom row: approximate view with absent long-wavelength (L) cone function.',
-  tritanopia:'Bottom row: approximate severe blue-yellow deficiency view; this model does not precisely represent tritanopia.'
+  normal:'Original colors, with no simulation applied.',
+  deuteranopia:'Original stays in true colors. The right preview shows the selected simulation; uploaded files are unchanged.',
+  protanopia:'Original stays in true colors. The right preview shows the selected simulation; uploaded files are unchanged.',
+  tritanopia:'Original stays in true colors. The right preview shows an approximate severe blue-yellow deficiency simulation; uploaded files are unchanged.'
 };
 function lowestGap(s){return Math.min(s.normal,s.protanopia,s.deuteranopia,s.tritanopia);}
 function reportText(r){
@@ -216,20 +211,15 @@ function renderOne(canvasId, emptyId, item, mode, label) {
   canvas.setAttribute('aria-label',`${label}, ${mode==='normal'?'true colors':mode+' simulation'}. Visual chart preview; data transcription is not available.`);
 }
 function render() {
-  /* Top row is ALWAYS true colors. The toggle only drives the bottom (simulated) row. */
-  renderOne('before','before-empty',state.original,'normal','Original chart');
-  renderOne('after','after-empty',state.corrected,'normal','Recolored chart');
   const simulating=state.mode!=='normal';
-  $('sim-row').hidden=!simulating;
-  if(simulating){
-    renderOne('before-sim','before-sim-empty',state.original,state.mode,'Original chart');
-    renderOne('after-sim','after-sim-empty',state.corrected,state.mode,'Recolored chart');
-    $('before-sim-title').textContent='Original · '+modeNames[state.mode];
-    $('after-sim-title').textContent='Recolored · '+modeNames[state.mode];
-  }
+  renderOne('before','before-empty',state.original,'normal','Original chart');
+  renderOne('after','after-empty',state.corrected || (simulating?state.original:null),state.mode,state.corrected?'Recolored chart':'Simulated original chart');
+  $('corrected-card').hidden=!simulating;
+  $('before-title').textContent='Original';
+  $('after-title').textContent=simulating?(state.corrected?'Recolored · ':'Simulation · ')+modeNames[state.mode]:'Recolored';
   $('vision-note').textContent=notes[state.mode];
   $('original-meta').textContent=state.original?`${state.original.width} × ${state.original.height}`:'Awaiting PNG';
-  $('corrected-meta').textContent=state.corrected?(state.sample?'Prepared example':'PNG loaded'):'Awaiting result';
+  $('corrected-meta').textContent=state.corrected?(state.sample?'Prepared example':'PNG loaded'):simulating&&state.original?'Simulation only':'Awaiting result';
   $('result-title').textContent=state.corrected?'Corrected image ready to download':'Compare with confidence';
   $('result-note').textContent=state.corrected?(state.report?reportText(state.report):'Exports the unsimulated PNG. Accessibility scores have not been calculated.'):'Scores appear here after you recolor a chart.';
   controls();
@@ -320,7 +310,12 @@ async function fix() {
   const timer=setTimeout(()=>request.abort(),90000);
   try {
     const body=new FormData();body.append('image',state.original.blob,state.original.name);
-    const response=await fetch(endpoint.href,{method:'POST',body,signal:request.signal,credentials:'omit'});
+    let response;
+    try {response=await fetch(endpoint.href,{method:'POST',body,signal:request.signal,credentials:'omit'});}
+    catch(e) {
+      if(e instanceof TypeError) throw new Error(`Could not contact the recoloring API at ${endpoint.href}. Confirm it is running and allows this page via CORS, or load a corrected PNG manually.`);
+      throw e;
+    }
     if(!response.ok)throw new Error(`Service returned HTTP ${response.status}. Ask your teammate to check the backend logs.`);
     if(!(response.headers.get('content-type')||'').toLowerCase().startsWith('image/png'))throw new Error('The service must return an image/png response. Check the backend integration docs.');
     const item=await decodePNG(await response.blob(),'corrected.png');
@@ -329,7 +324,7 @@ async function fix() {
     try{state.report=JSON.parse(response.headers.get('X-ChartSafe-Report')||'null');}catch{state.report=null;}
     state.corrected=item;state.sample=false;
     status(state.report?'Recolored PNG received. '+reportText(state.report):'Recolored PNG received. Inspect the result in each view.');
-  } catch(e){if(rev===state.revision)status(e.name==='AbortError'?'The service timed out after 90 seconds. Try again once the backend is ready.':e instanceof TypeError?'Could not reach the service. Check its address, that it is running, and its CORS settings.':e.message,'error');}
+  } catch(e){if(rev===state.revision)status(e.name==='AbortError'?'The service timed out after 90 seconds. Try again once the backend is ready.':e.message,'error');}
   finally {clearTimeout(timer);if(rev===state.revision){state.busy=false;state.request=null;render();}}
 }
 $('upload').addEventListener('change',e=>{loadOriginal(e.target.files[0]);e.target.value='';});
@@ -341,7 +336,7 @@ document.querySelectorAll('input[name="vision"]').forEach(r=>r.addEventListener(
 $('dropzone').addEventListener('drop',e=>loadOriginal(e.dataTransfer.files[0]));
 window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
 $('download').addEventListener('click',()=>{if(!state.corrected)return;const url=URL.createObjectURL(state.corrected.blob);const a=document.createElement('a');a.href=url;a.download='chartsafe-corrected.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
-$('endpoint').value=location.protocol.startsWith('http')?location.origin+'/api/recolor':'http://localhost:8000/api/recolor';
+$('endpoint').value=location.protocol.startsWith('http')?location.origin+'/api/recolor':'http://127.0.0.1:8000/api/recolor';
 controls();
 render();
 </script>

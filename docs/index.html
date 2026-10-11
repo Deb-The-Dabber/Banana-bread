@@ -35,7 +35,7 @@
       <details class="settings">
         <summary>Connect recoloring service</summary>
         <label for="endpoint">API endpoint</label>
-        <input id="endpoint" type="url" placeholder="http://localhost:8000/api/recolor" spellcheck="false">
+        <input id="endpoint" type="url" placeholder="http://127.0.0.1:8000/api/recolor" spellcheck="false">
         <p class="small muted">Recolor sends the original PNG to this address. Use a service you trust.</p>
       </details>
       <details class="settings">
@@ -62,12 +62,12 @@
       </fieldset>
       <p id="vision-note" class="view-note">Original colors, with no simulation applied.</p>
       <div class="comparison">
-        <article class="chart-card"><div class="card-title"><h3><span class="dot original"></span>Original</h3><span id="original-meta">Awaiting PNG</span></div>
+        <article class="chart-card"><div class="card-title"><h3><span class="dot original"></span><span id="before-title">Original</span></h3><span id="original-meta">Awaiting PNG</span></div>
           <div class="canvas-wrap"><canvas id="before" hidden role="img" aria-label="Original chart preview"></canvas>
             <div class="empty" id="before-empty"><span aria-hidden="true">▥</span><strong>Your chart goes here</strong><p>Upload an image or try the sample.</p></div>
           </div>
         </article>
-        <article class="chart-card"><div class="card-title"><h3><span class="dot corrected"></span><span id="after-title">Color vision preview</span></h3><span id="corrected-meta">Awaiting result</span></div>
+        <article id="corrected-card" class="chart-card"><div class="card-title"><h3><span class="dot corrected"></span><span id="after-title">Recolored</span></h3><span id="corrected-meta">Awaiting result</span></div>
           <div class="canvas-wrap"><canvas id="after" hidden role="img" aria-label="Recolored chart preview"></canvas>
             <div class="empty" id="after-empty"><span aria-hidden="true">▥</span><strong>A new perspective</strong><p>Upload one PNG to preview it here.</p></div>
           </div>
@@ -81,4 +81,3 @@
 </main>
 </body>
 </html>
-

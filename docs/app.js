@@ -1,11 +1,12 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const state = {original:null, corrected:null, mode:'normal', sample:false, revision:0, correctedRevision:0, busy:false, request:null};
+const modeNames={deuteranopia:'Deuteranopia',protanopia:'Protanopia',tritanopia:'Tritanopia'};
 const notes = {
   normal:'Original colors, with no simulation applied.',
-  deuteranopia:'Approximate view with absent medium-wavelength (M) cone function.',
-  protanopia:'Approximate view with absent long-wavelength (L) cone function.',
-  tritanopia:'Approximate severe blue-yellow deficiency view; this model does not precisely represent tritanopia.'
+  deuteranopia:'The right preview shows an approximate simulation with absent medium-wavelength (M) cone function.',
+  protanopia:'The right preview shows an approximate simulation with absent long-wavelength (L) cone function.',
+  tritanopia:'The right preview shows an approximate severe blue-yellow deficiency simulation; this model does not precisely represent tritanopia.'
 };
 function status(message, kind='') { $('status').textContent=message; $('status').className='status '+kind; }
 function controls() {
@@ -17,21 +18,23 @@ function controls() {
 }
 function renderOne(id, item, mode) {
   const canvas=$(id); canvas.hidden=!item;
-  $(id==='before'?'before-empty':'after-empty').hidden=!!item;
+  $(id+'-empty').hidden=!!item;
   if (!item) return;
   canvas.width=item.width; canvas.height=item.height;
   const pixels=ChartSafeSimulation.simulate(item.pixels.data,mode);
   canvas.getContext('2d').putImageData(new ImageData(pixels,item.width,item.height),0,0);
-  canvas.setAttribute('aria-label',`${id==='before'?'Original':state.corrected?'Recolored':'Preview'} chart, ${mode==='normal'?'true colors':mode+' simulation'}. Visual chart preview; data transcription is not available.`);
+  canvas.setAttribute('aria-label',`${id==='before'?'Original':state.corrected?'Recolored':'Color vision'} chart, ${mode==='normal'?'true colors':mode+' simulation'}. Visual chart preview; data transcription is not available.`);
 }
 function render() {
-  // Keep the original immutable; only the right preview follows the selector.
+  const simulating=state.mode!=='normal';
   renderOne('before',state.original,'normal');
-  renderOne('after',state.corrected || state.original,state.mode);
-  $('after-title').textContent=state.corrected?'Recolored':'Color vision preview';
-  $('vision-note').textContent='Right panel only. '+notes[state.mode]+(state.original && !state.corrected?' Preview of your original; no correction applied yet.':'');
+  renderOne('after',state.corrected || (simulating?state.original:null),state.mode);
+  $('corrected-card').hidden=!simulating;
+  $('after-title').textContent=simulating?(state.corrected?'Recolored · '+modeNames[state.mode]:'Simulation · '+modeNames[state.mode]):'Color vision preview';
+  $('vision-note').textContent='Original stays in true colors. '+notes[state.mode]+(simulating && state.original && !state.corrected?' The right panel previews your original; no correction has been generated yet.':'');
   $('original-meta').textContent=state.original?`${state.original.width} × ${state.original.height}`:'Awaiting PNG';
-  $('corrected-meta').textContent=state.corrected?(state.sample?'Prepared example':'PNG loaded'):state.original?'Original · preview only':'Awaiting PNG';
+  $('corrected-meta').textContent=state.corrected?(state.sample?'Prepared example':'PNG loaded'):simulating&&state.original?'Simulation only':'Awaiting result';
+  $('before-empty').querySelector('p').textContent=state.original?'':'Upload an image or try the sample.';
   controls();
 }
 async function decodePNG(blob, name='chart.png') {
@@ -97,14 +100,19 @@ async function fix() {
   const timer=setTimeout(()=>request.abort(),90000);
   try {
     const body=new FormData();body.append('image',state.original.blob,state.original.name);
-    const response=await fetch(endpoint.href,{method:'POST',body,signal:request.signal,credentials:'omit'});
+    let response;
+    try {response=await fetch(endpoint.href,{method:'POST',body,signal:request.signal,credentials:'omit'});}
+    catch(e) {
+      if(e instanceof TypeError) throw new Error(`Could not contact the recoloring API at ${endpoint.href}. Confirm it is running and allows this page via CORS, or load a corrected PNG manually.`);
+      throw e;
+    }
     if(!response.ok)throw new Error(`Service returned HTTP ${response.status}. Ask your teammate to check the backend logs.`);
     if(!(response.headers.get('content-type')||'').toLowerCase().startsWith('image/png'))throw new Error('The service must return an image/png response. Ask Deb to check the API response format.');
     const item=await decodePNG(await response.blob(),'corrected.png');
     if(rev!==state.revision)return;
     if(item.width!==state.original.width || item.height!==state.original.height)throw new Error('The service changed the image dimensions. Expected a PNG matching the original size.');
     state.corrected=item;state.sample=false;status('Recolored PNG received. Compare the views and check the chart data.');
-  } catch(e){if(rev===state.revision)status(e.name==='AbortError'?'The service timed out after 90 seconds. Try again once the backend is ready.':e instanceof TypeError?'Could not reach the service. Check its address, that it is running, and its CORS settings.':e.message,'error');}
+  } catch(e){if(rev===state.revision)status(e.name==='AbortError'?'The service timed out after 90 seconds. Try again once the backend is ready.':e.message,'error');}
   finally {clearTimeout(timer);if(rev===state.revision){state.busy=false;state.request=null;render();}}
 }
 $('upload').addEventListener('change',e=>{loadOriginal(e.target.files[0]);e.target.value='';});
@@ -116,5 +124,6 @@ document.querySelectorAll('input[name="vision"]').forEach(r=>r.addEventListener(
 $('dropzone').addEventListener('drop',e=>loadOriginal(e.dataTransfer.files[0]));
 window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
 $('download').addEventListener('click',()=>{if(!state.corrected)return;const url=URL.createObjectURL(state.corrected.blob);const a=document.createElement('a');a.href=url;a.download='chartsafe-corrected.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+$('endpoint').value=location.protocol.startsWith('http')?location.origin+'/api/recolor':'http://127.0.0.1:8000/api/recolor';
+controls();
 render();
-
