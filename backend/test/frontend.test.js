@@ -246,8 +246,10 @@ test('auto-generation is wired into the chart load flow', () => {
   assert.match(script, /RECOLOR\.recolor\(data\)/);
   assert.match(script, /'Generated in browser'/);
   assert.match(script, /state\.generated=true/);
-  /* The generated blob must flow into the download path unchanged. */
-  assert.match(script, /URL\.createObjectURL\(state\.corrected\.blob\)/);
+  assert.match(script, /let blob=state\.corrected\.blob/);
+  assert.match(script, /ChartSafeSimulation\.simulate\(pixels\.data,mode\)/);
+  assert.match(script, /chartsafe-corrected-\$\{mode\}\.png/);
+  assert.match(script, /canvas\.toBlob\(resolve,'image\/png'\)/);
 });
 
 test('frontend assets are consolidated: no orphaned duplicates, legacy route redirects', () => {
