@@ -3,6 +3,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const Busboy = require('busboy');
 const { PNG } = require('pngjs');
 
@@ -54,17 +55,74 @@ function aiConfig() {
    latency; vision models do not need print-resolution pixels. */
 const AI_MAX_IMAGE_DIMENSION = 768;
 
-/* Optional AI concept-image generation via NVIDIA Cosmos (text2image).
-   Requires credentials supplied with a Cosmos deployment — regular
-   build.nvidia.com keys are NOT entitled (verified 2026-10: 404 on every
-   ai.api.nvidia.com route with all available keys). The feature reports a
-   clear 503 until CHARTSAFE_COSMOS_KEY is set with entitled credentials. */
-function cosmosConfig() {
+/* Optional AI concept-image generation ("nano banana"). Two providers,
+   tried in order:
+   1. Google image models via Vertex AI — authenticates with the machine's
+      Google application-default credentials (the same ADC login the team's
+      working script uses), no API key needed. Verified working 2026-10 with
+      gemini-3.1-flash-image on project banana-bread-db.
+   2. NVIDIA Cosmos — requires deployment credentials (CHARTSAFE_COSMOS_KEY);
+      regular build.nvidia.com keys are NOT entitled (verified 2026-10). */
+function imageProviderConfig() {
   return {
-    key: process.env.CHARTSAFE_COSMOS_KEY || '',
-    url: (process.env.CHARTSAFE_COSMOS_URL || 'https://ai.api.nvidia.com/v1/cosmos/nvidia/cosmos3-nano').replace(/\/+$/, ''),
-    timeoutMs: Number(process.env.CHARTSAFE_COSMOS_TIMEOUT_MS || 240_000)
+    project: process.env.CHARTSAFE_IMAGE_PROJECT || 'banana-bread-db',
+    location: process.env.CHARTSAFE_IMAGE_LOCATION || 'us-central1',
+    model: process.env.CHARTSAFE_IMAGE_MODEL || 'gemini-3.1-flash-image',
+    base: (process.env.CHARTSAFE_IMAGE_BASE || 'https://aiplatform.googleapis.com').replace(/\/+$/, ''),
+    credentialsPath: process.env.CHARTSAFE_IMAGE_CREDENTIALS ||
+      path.join(os.homedir(), '.config', 'gcloud', 'application_default_credentials.json'),
+    tokenOverride: process.env.CHARTSAFE_IMAGE_TOKEN || '',
+    cosmosKey: process.env.CHARTSAFE_COSMOS_KEY || '',
+    cosmosUrl: (process.env.CHARTSAFE_COSMOS_URL || 'https://ai.api.nvidia.com/v1/cosmos/nvidia/cosmos3-nano').replace(/\/+$/, ''),
+    timeoutMs: Number(process.env.CHARTSAFE_IMAGE_TIMEOUT_MS || 240_000)
   };
+}
+
+/* Refreshes a short-lived access token from the authorized_user ADC file,
+   the same OAuth flow google-genai performs. Cached until a minute before
+   expiry. CHARTSAFE_IMAGE_TOKEN short-circuits this for tests and operators
+   who prefer a pre-provisioned token. */
+let cachedGoogleImageToken = { token: '', expiresAt: 0 };
+async function getGoogleImageAccessToken(config) {
+  if (config.tokenOverride) return config.tokenOverride;
+  const now = Date.now();
+  if (cachedGoogleImageToken.token && now < cachedGoogleImageToken.expiresAt) {
+    return cachedGoogleImageToken.token;
+  }
+  let credentials;
+  try {
+    credentials = JSON.parse(fs.readFileSync(config.credentialsPath, 'utf8'));
+  } catch {
+    throw new HttpError(503, 'Image generation needs a Google login. Run gcloud auth application-default login (the same setup as the team working script), or set CHARTSAFE_IMAGE_TOKEN.');
+  }
+  if (credentials.type !== 'authorized_user' || !credentials.refresh_token) {
+    throw new HttpError(503, 'The Google credentials file is not an authorized_user login; re-run gcloud auth application-default login.');
+  }
+  let response;
+  try {
+    response = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: credentials.refresh_token,
+        client_id: credentials.client_id,
+        client_secret: credentials.client_secret
+      }),
+      signal: AbortSignal.timeout(30_000)
+    });
+  } catch (error) {
+    throw new HttpError(502, `Could not refresh the Google credentials (${error && error.message ? error.message : 'network error'}).`);
+  }
+  if (!response.ok) {
+    throw new HttpError(502, 'The Google credentials could not be refreshed. Run gcloud auth application-default login again.');
+  }
+  const data = await response.json();
+  cachedGoogleImageToken = {
+    token: data.access_token,
+    expiresAt: now + Math.max(60, (data.expires_in || 3600) - 60) * 1000
+  };
+  return cachedGoogleImageToken.token;
 }
 const STATIC_FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
@@ -550,60 +608,111 @@ async function analyzeChart(buffer) {
   throw lastError || new HttpError(502, 'No AI models are configured.');
 }
 
-/* Renders a decorative concept image from a text prompt via NVIDIA Cosmos
-   text2image. The prompt is composed client-side from measured chart facts
-   (no image is uploaded) and the result is always labeled as a concept —
-   generated images fabricate data values and are never a correction. */
+/* Renders a decorative concept image from a text prompt. The prompt is
+   composed client-side from measured chart facts (no image is uploaded)
+   and the result is always labeled as a concept — generated images
+   fabricate data values and are never a correction. Providers are tried
+   in order: Google image models via the machine's ADC login ("nano
+   banana", the team's verified-working setup), then NVIDIA Cosmos if
+   deployment credentials are configured. */
 async function generateConceptImage(prompt) {
-  const { key, url, timeoutMs } = cosmosConfig();
-  if (!key) {
-    throw new HttpError(503, 'Concept image generation is not configured. Cosmos requires credentials supplied with a NVIDIA deployment (see README); set CHARTSAFE_COSMOS_KEY to enable it.');
-  }
   if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 1000) {
     throw new HttpError(400, 'Provide a concept prompt between 1 and 1000 characters.');
   }
-  let response;
+  const config = imageProviderConfig();
+  const failures = [];
+  let providerAvailable = false;
+
+  /* Provider 1: Google image model via Vertex AI. */
   try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        Accept: 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model_mode: 'text2image',
-        prompt: prompt.trim(),
-        resolution: '480_16_9',
-        num_inference_steps: 20,
-        seed: 42
-      }),
-      signal: AbortSignal.timeout(timeoutMs)
-    });
+    const token = await getGoogleImageAccessToken(config);
+    providerAvailable = true;
+    const response = await fetch(
+      `${config.base}/v1/projects/${config.project}/locations/${config.location}/publishers/google/models/${config.model}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt.trim() }] }],
+          generationConfig: { responseModalities: ['TEXT', 'IMAGE'], temperature: 1 }
+        }),
+        signal: AbortSignal.timeout(config.timeoutMs)
+      }
+    );
+    if (!response.ok) {
+      console.error(`[chartsafe] image model returned HTTP ${response.status}`);
+      if (response.status === 401 || response.status === 403) {
+        throw new HttpError(502, 'The Google image model rejected the credentials. Run gcloud auth application-default login again.');
+      }
+      throw new HttpError(502, `The image model returned HTTP ${response.status}.`);
+    }
+    const data = await response.json();
+    const parts = data && data.candidates && data.candidates[0] && data.candidates[0].content
+      ? data.candidates[0].content.parts || [] : [];
+    const imagePart = parts.find(part => part.inlineData || part.inline_data);
+    const inline = imagePart && (imagePart.inlineData || imagePart.inline_data);
+    if (inline && typeof inline.data === 'string' && inline.data.length >= 50 &&
+        /^[A-Za-z0-9+/]+={0,2}$/.test(inline.data.slice(0, 100))) {
+      const mimeType = inline.mimeType || inline.mime_type || 'image/png';
+      return { image: `data:${mimeType};base64,${inline.data}`, model: config.model };
+    }
+    failures.push('the image model returned no usable image');
   } catch (error) {
-    if (error && error.name === 'TimeoutError') {
-      throw new HttpError(504, 'The image model timed out. Try again.');
+    if (error instanceof HttpError) {
+      if (error.statusCode === 503) {
+        /* No Google login — not a failure, just an unconfigured provider. */
+        failures.push('Google image model not configured (no application default credentials)');
+      } else {
+        throw error;
+      }
+    } else {
+      throw new HttpError(502, `Could not reach the image model (${error && error.message ? error.message : 'network error'}).`);
     }
-    throw new HttpError(502, `Could not reach the image model (${error && error.message ? error.message : 'network error'}).`);
   }
-  if (!response.ok) {
-    console.error(`[chartsafe] cosmos returned HTTP ${response.status}`);
-    if (response.status === 401 || response.status === 403) {
-      throw new HttpError(502, 'The image model rejected the configured key. Cosmos requires its own deployment credentials.');
+
+  /* Provider 2: NVIDIA Cosmos deployment (if credentials were provided). */
+  if (config.cosmosKey) {
+    providerAvailable = true;
+    try {
+      const response = await fetch(config.cosmosUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${config.cosmosKey}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model_mode: 'text2image',
+          prompt: prompt.trim(),
+          resolution: '480_16_9',
+          num_inference_steps: 20,
+          seed: 42
+        }),
+        signal: AbortSignal.timeout(config.timeoutMs)
+      });
+      if (!response.ok) {
+        console.error(`[chartsafe] cosmos returned HTTP ${response.status}`);
+        failures.push(`cosmos returned HTTP ${response.status}`);
+      } else {
+        const data = await response.json();
+        const image = typeof data.b64_image === 'string' ? data.b64_image : '';
+        if (image && image.length >= 50 && /^[A-Za-z0-9+/]+={0,2}$/.test(image.slice(0, 100))) {
+          return { image: `data:image/png;base64,${image}`, model: 'cosmos3-nano' };
+        }
+        failures.push('cosmos returned no usable image');
+      }
+    } catch (error) {
+      failures.push(`cosmos was unreachable (${error && error.message ? error.message : 'network error'})`);
     }
-    throw new HttpError(502, `The image model returned HTTP ${response.status}.`);
   }
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    throw new HttpError(502, 'The image model returned a malformed response.');
+
+  if (!providerAvailable) {
+    throw new HttpError(503, 'Image generation is not configured. Log in with Google application default credentials (the team setup) or set CHARTSAFE_COSMOS_KEY / CHARTSAFE_IMAGE_TOKEN.');
   }
-  const image = typeof data.b64_image === 'string' ? data.b64_image : '';
-  if (!image || image.length < 50 || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.slice(0, 100))) {
-    throw new HttpError(502, 'The image model returned no usable image.');
-  }
-  return { image: `data:image/png;base64,${image}` };
+  throw new HttpError(502, `Image generation failed: ${failures.join('; ')}.`);
 }
 
 function readUploadedPng(request) {
@@ -825,8 +934,8 @@ if (require.main === module) {
 module.exports = {
   ACCESSIBLE_PALETTE,
   analyzeChart,
-  cosmosConfig,
   generateConceptImage,
+  imageProviderConfig,
   assignPaletteIndices,
   createServer,
   downscalePng,

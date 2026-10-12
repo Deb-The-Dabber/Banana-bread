@@ -123,16 +123,18 @@ geometry, labels, and data can never change, and the measured ΔE checks
 re-run against the model's chosen palette (a bad AI pick gets flagged with
 numbers). "Restore heuristic correction" swaps back at any time.
 
-**AI concept image (optional, requires a Cosmos deployment):** "Generate AI
-concept image" composes a text prompt from the measured facts (chart type,
-series labels, accessible colors) — no image is uploaded — and renders a
-decorative concept via NVIDIA Cosmos `text2image` (`POST /api/concept`).
-The prompt is shown in the consent dialog before anything is sent, and the
-result is framed as AI-generated art: values and labels in it are
-fabricated by the image model and it is never treated as chart data.
-Cosmos needs its own deployment credentials (`CHARTSAFE_COSMOS_KEY`,
-`CHARTSAFE_COSMOS_URL`); until they are set the endpoint answers a clear
-503 and the UI explains what is missing.
+**AI concept image ("nano banana"):** "Generate AI concept image" composes a
+text prompt from the measured facts (chart type, series labels, accessible
+colors) — no image is uploaded — and renders a decorative concept via
+Google's image model (`gemini-3.1-flash-image` on Vertex AI,
+`POST /api/concept`), authenticated with the machine's Google
+application-default credentials (the same ADC login as the team's working
+script — no API key). NVIDIA Cosmos remains an automatic fallback when
+`CHARTSAFE_COSMOS_KEY` is configured. The prompt is shown in the consent
+dialog before anything is sent, and the result is framed as AI-generated
+art: values and labels in it are fabricated by the image model and it is
+never treated as chart data. Verified end-to-end 2026-10: a real
+1408x768 concept rendered in 11 s.
 
 **AI-directed legend:** when the model names the series it saw, "Add legend
 (AI-named)" draws a clean legend box — the AI's labels on the corrected
