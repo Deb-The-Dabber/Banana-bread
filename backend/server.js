@@ -41,7 +41,12 @@ function aiConfig() {
   return {
     key: process.env.CHARTSAFE_AI_KEY || '',
     base: (process.env.CHARTSAFE_AI_BASE || 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, ''),
-    model: process.env.CHARTSAFE_AI_MODEL || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+    /* Comma-separated list: tried in order. Capacity errors (503/504) and
+       rate limits on one model fall through to the next. */
+    models: (process.env.CHARTSAFE_AI_MODEL || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning,meta/llama-3.2-11b-vision-instruct')
+      .split(',')
+      .map(model => model.trim())
+      .filter(Boolean),
     timeoutMs: Number(process.env.CHARTSAFE_AI_TIMEOUT_MS || 90_000)
   };
 }
@@ -413,7 +418,7 @@ function extractJsonFromModelReply(text) {
 /* Calls the configured OpenAI-compatible vision model with the chart PNG.
    Only the model name and upstream status codes are ever logged. */
 async function analyzeChart(buffer) {
-  const { key: AI_KEY, base: AI_BASE, model: AI_MODEL, timeoutMs: AI_TIMEOUT_MS } = aiConfig();
+  const { key: AI_KEY, base: AI_BASE, models: AI_MODELS, timeoutMs: AI_TIMEOUT_MS } = aiConfig();
   if (!AI_KEY) {
     throw new HttpError(503, 'AI analysis is not configured. Set CHARTSAFE_AI_KEY (see README) and restart the backend.');
   }
@@ -440,58 +445,67 @@ async function analyzeChart(buffer) {
   const image = downscalePng(source);
   const encoded = PNG.sync.write(image).toString('base64');
 
-  let response;
-  try {
-    response = await fetch(`${AI_BASE}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${AI_KEY}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json'
-      },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'text', text: ANALYSIS_PROMPT },
-            { type: 'image_url', image_url: { url: `data:image/png;base64,${encoded}` } }
-          ]
-        }],
-        max_tokens: 1200,
-        temperature: 0.2
-      }),
-      signal: AbortSignal.timeout(AI_TIMEOUT_MS)
-    });
-  } catch (error) {
-    if (error && error.name === 'TimeoutError') {
-      throw new HttpError(504, 'The AI provider timed out. Try again.');
+  /* Try each configured model in order: capacity errors (503/504), missing
+     model entitlements (404), rate limits (429), network faults, and even
+     unparseable replies fall through to the next model. Only key-level
+     rejections (401/403) abort the whole request. */
+  let lastError = null;
+  for (const model of AI_MODELS) {
+    let response;
+    try {
+      response = await fetch(`${AI_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${AI_KEY}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: ANALYSIS_PROMPT },
+              { type: 'image_url', image_url: { url: `data:image/png;base64,${encoded}` } }
+            ]
+          }],
+          max_tokens: 1200,
+          temperature: 0.2
+        }),
+        signal: AbortSignal.timeout(AI_TIMEOUT_MS)
+      });
+    } catch (error) {
+      if (error && error.name === 'TimeoutError') {
+        lastError = new HttpError(504, 'The AI provider timed out. Try again.');
+      } else {
+        lastError = new HttpError(502, `Could not reach the AI provider (${error && error.message ? error.message : 'network error'}).`);
+      }
+      continue;
     }
-    throw new HttpError(502, `Could not reach the AI provider (${error && error.message ? error.message : 'network error'}).`);
-  }
-  if (!response.ok) {
-    console.error(`[chartsafe] AI provider returned HTTP ${response.status} for model ${AI_MODEL}`);
-    if (response.status === 401 || response.status === 403) {
-      throw new HttpError(502, 'The AI provider rejected the configured key. Check CHARTSAFE_AI_KEY.');
+    if (!response.ok) {
+      console.error(`[chartsafe] AI provider returned HTTP ${response.status} for model ${model}`);
+      if (response.status === 401 || response.status === 403) {
+        throw new HttpError(502, 'The AI provider rejected the configured key. Check CHARTSAFE_AI_KEY.');
+      }
+      lastError = response.status === 429
+        ? new HttpError(429, 'The AI provider is rate-limiting requests. Wait a moment and try again.')
+        : new HttpError(502, `The AI provider returned HTTP ${response.status} for every configured model.`);
+      continue;
     }
-    if (response.status === 429) {
-      throw new HttpError(429, 'The AI provider is rate-limiting requests. Wait a moment and try again.');
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      lastError = new HttpError(502, 'The AI provider returned a malformed response.');
+      continue;
     }
-    throw new HttpError(502, `The AI provider returned HTTP ${response.status}.`);
+    const content = data && data.choices && data.choices[0] && data.choices[0].message
+      ? data.choices[0].message.content : '';
+    const analysis = validateAnalysis(extractJsonFromModelReply(String(content || '')));
+    if (analysis) return { model, analysis };
+    lastError = new HttpError(502, 'The AI reply did not contain a usable analysis. Try again or switch CHARTSAFE_AI_MODEL.');
   }
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    throw new HttpError(502, 'The AI provider returned a malformed response.');
-  }
-  const content = data && data.choices && data.choices[0] && data.choices[0].message
-    ? data.choices[0].message.content : '';
-  const analysis = validateAnalysis(extractJsonFromModelReply(String(content || '')));
-  if (!analysis) {
-    throw new HttpError(502, 'The AI reply did not contain a usable analysis. Try again or switch CHARTSAFE_AI_MODEL.');
-  }
-  return { model: AI_MODEL, analysis };
+  throw lastError || new HttpError(502, 'No AI models are configured.');
 }
 
 function readUploadedPng(request) {
@@ -679,9 +693,9 @@ if (require.main === module) {
   const server = createServer();
   server.listen(PORT, HOST, () => {
     console.log(`ChartSafe recoloring API listening at http://${HOST}:${PORT}`);
-    const { key, model, base } = aiConfig();
+    const { key, models, base } = aiConfig();
     console.log(key
-      ? `AI analysis enabled: ${model} via ${base}`
+      ? `AI analysis enabled: ${models.join(' → ')} via ${base}`
       : 'AI analysis disabled — set CHARTSAFE_AI_KEY (see README) to enable /api/analyze');
   });
 }

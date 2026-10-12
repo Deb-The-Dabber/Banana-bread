@@ -135,10 +135,16 @@ Copy `backend/.env.example` to `backend/.env` (gitignored) and set:
 
 Two verified configurations:
 
-| Option | Base | Model | Cost |
-|--------|------|-------|------|
-| NVIDIA NIM (default) | `https://integrate.api.nvidia.com/v1` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | free `nvapi-` key from build.nvidia.com |
-| OpenRouter (tested 2026-10) | `https://openrouter.ai/api/v1` | same model + `:free` suffix | free tier, rate-limited |
+| Option | Base | Model(s) | Cost |
+|--------|------|----------|------|
+| NVIDIA NIM (default, tested 2026-10) | `https://integrate.api.nvidia.com/v1` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning,meta/llama-3.2-11b-vision-instruct` | free `nvapi-` key from build.nvidia.com |
+| OpenRouter (tested 2026-10) | `https://openrouter.ai/api/v1` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | free tier, rate-limited |
+
+`CHARTSAFE_AI_MODEL` accepts a comma-separated list tried in order: capacity
+errors (503/504), missing entitlements (404), rate limits (429), and unusable
+replies fall through to the next model, so a saturated fast model does not
+break the demo. Measured latency on real 2400x1200 charts: 9-35 s typically
+(occasionally up to ~75 s on the fallback model).
 
 `POST /api/analyze` accepts the same multipart PNG as `/api/recolor`
 (≤ 10 MB, ≤ 8 megapixels; the image is downscaled to ≤ 1024 px before the

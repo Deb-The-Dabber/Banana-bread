@@ -660,3 +660,68 @@ test('recoloring leaves probable backgrounds and out-of-band dark pixels unchang
   const darkIndex = (99 * 600 + 59) * 4;
   assert.deepEqual([...out.data.subarray(darkIndex, darkIndex + 4)], [70, 20, 18, 255]);
 });
+
+test('analyze: falls through to the next model on capacity errors', async () => {
+  let calls = 0;
+  const { stub, url } = await stubUpstream((request, response, body) => {
+    calls++;
+    if (calls === 1) {
+      response.writeHead(503, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: 'capacity' }));
+      return;
+    }
+    const payload = JSON.parse(body);
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(completion(JSON.stringify({ ...CANNED_ANALYSIS, summary: `answered by ${payload.model}` })));
+  });
+  try {
+    await withAiEnv({
+      CHARTSAFE_AI_KEY: 'k',
+      CHARTSAFE_AI_BASE: url,
+      CHARTSAFE_AI_MODEL: 'first/model,second/model'
+    }, async () => {
+      const response = await fetch(`${baseUrl}/api/analyze`, {
+        method: 'POST',
+        headers: { Origin: 'http://localhost:5500' },
+        body: multipartUpload(samplePng())
+      });
+      assert.equal(response.status, 200);
+      const payload = await response.json();
+      assert.equal(payload.model, 'second/model', 'must report the model that actually answered');
+      assert.match(payload.analysis.summary, /answered by second\/model/);
+      assert.equal(calls, 2, 'exactly one attempt per model');
+    });
+  } finally {
+    await new Promise(resolve => stub.close(resolve));
+  }
+});
+
+test('analyze: model that returns unusable JSON falls through too', async () => {
+  const { stub, url } = await stubUpstream((request, response, body) => {
+    const payload = JSON.parse(body);
+    if (payload.model === 'prose/model') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(completion('I looked at the chart and it seemed fine.'));
+      return;
+    }
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(completion(JSON.stringify(CANNED_ANALYSIS)));
+  });
+  try {
+    await withAiEnv({
+      CHARTSAFE_AI_KEY: 'k',
+      CHARTSAFE_AI_BASE: url,
+      CHARTSAFE_AI_MODEL: 'prose/model,json/model'
+    }, async () => {
+      const response = await fetch(`${baseUrl}/api/analyze`, {
+        method: 'POST',
+        headers: { Origin: 'http://localhost:5500' },
+        body: multipartUpload(samplePng())
+      });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).model, 'json/model');
+    });
+  } finally {
+    await new Promise(resolve => stub.close(resolve));
+  }
+});
