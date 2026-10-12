@@ -292,6 +292,18 @@ test('any image format is accepted and decoded safely', () => {
   assert.match(script, /could not be decoded as an image/);
 });
 
+test('concept image feature is consent-gated and labeled as not-your-data', () => {
+  assert.match(html, /<dialog id="concept-consent"/);
+  assert.match(html, /Generate AI concept image/);
+  assert.match(html, /not your data/i);
+  assert.match(html, /values, labels, and numbers in it are fabricated/i);
+  assert.match(script, /function conceptPrompt\(/);
+  assert.match(script, /async function runConceptGeneration\(/);
+  /* The concept path sends a text prompt only — never the image. */
+  assert.match(script, /fetch\('\/api\/concept',\{method:'POST',headers:\{'Content-Type':'application\/json'\}/);
+  assert.match(script, /decorative style preview, <strong>not your data<\/strong>/);
+});
+
 test('AI-directed legend machinery is present and honest', () => {
   assert.match(script, /async function applyLegend\(/);
   assert.match(script, /function removeLegend\(/);

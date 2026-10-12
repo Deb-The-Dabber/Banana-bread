@@ -123,6 +123,17 @@ geometry, labels, and data can never change, and the measured ΔE checks
 re-run against the model's chosen palette (a bad AI pick gets flagged with
 numbers). "Restore heuristic correction" swaps back at any time.
 
+**AI concept image (optional, requires a Cosmos deployment):** "Generate AI
+concept image" composes a text prompt from the measured facts (chart type,
+series labels, accessible colors) — no image is uploaded — and renders a
+decorative concept via NVIDIA Cosmos `text2image` (`POST /api/concept`).
+The prompt is shown in the consent dialog before anything is sent, and the
+result is framed as AI-generated art: values and labels in it are
+fabricated by the image model and it is never treated as chart data.
+Cosmos needs its own deployment credentials (`CHARTSAFE_COSMOS_KEY`,
+`CHARTSAFE_COSMOS_URL`); until they are set the endpoint answers a clear
+503 and the UI explains what is missing.
+
 **AI-directed legend:** when the model names the series it saw, "Add legend
 (AI-named)" draws a clean legend box — the AI's labels on the corrected
 colors, placed in the emptiest corner of the image — without touching
@@ -137,9 +148,13 @@ Verified model availability on NVIDIA NIM with the tested key (checked
 demo), and `nvidia/llama-3.2-90b-vision-instruct` (hangs). **Not available**
 through this API: PaliGemma (404 — not in the hosted catalog at all),
 `nvidia/cosmos-reason2-8b` (listed but not entitled for this account), and
-**no image-generation models of any kind** — so no generative image editing;
-that is exactly why every AI fix here is applied by the deterministic pixel
-engine instead. The flow is consent-gated — a dialog explains exactly what
+`nvidia/cosmos3-nano` (404 on every `ai.api.nvidia.com` route with these
+keys — per its quickstart it needs the invocation URL and credentials
+supplied with a deployment). No image-generation model is reachable with
+the current keys — so no generative image editing; that is exactly why
+every AI fix here is applied by the deterministic pixel engine, and why
+the concept-image route is built, tested against a stub, and waiting for
+entitled Cosmos credentials. The flow is consent-gated — a dialog explains exactly what
 will be uploaded before anything leaves the machine, and canceling sends
 nothing. Alongside the model's findings, ChartSafe shows **measured
 checks** computed deterministically from the image's pixels: every

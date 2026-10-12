@@ -53,6 +53,19 @@ function aiConfig() {
 /* 768px kept the same reading quality on real charts while trimming
    latency; vision models do not need print-resolution pixels. */
 const AI_MAX_IMAGE_DIMENSION = 768;
+
+/* Optional AI concept-image generation via NVIDIA Cosmos (text2image).
+   Requires credentials supplied with a Cosmos deployment — regular
+   build.nvidia.com keys are NOT entitled (verified 2026-10: 404 on every
+   ai.api.nvidia.com route with all available keys). The feature reports a
+   clear 503 until CHARTSAFE_COSMOS_KEY is set with entitled credentials. */
+function cosmosConfig() {
+  return {
+    key: process.env.CHARTSAFE_COSMOS_KEY || '',
+    url: (process.env.CHARTSAFE_COSMOS_URL || 'https://ai.api.nvidia.com/v1/cosmos/nvidia/cosmos3-nano').replace(/\/+$/, ''),
+    timeoutMs: Number(process.env.CHARTSAFE_COSMOS_TIMEOUT_MS || 240_000)
+  };
+}
 const STATIC_FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
@@ -537,6 +550,62 @@ async function analyzeChart(buffer) {
   throw lastError || new HttpError(502, 'No AI models are configured.');
 }
 
+/* Renders a decorative concept image from a text prompt via NVIDIA Cosmos
+   text2image. The prompt is composed client-side from measured chart facts
+   (no image is uploaded) and the result is always labeled as a concept —
+   generated images fabricate data values and are never a correction. */
+async function generateConceptImage(prompt) {
+  const { key, url, timeoutMs } = cosmosConfig();
+  if (!key) {
+    throw new HttpError(503, 'Concept image generation is not configured. Cosmos requires credentials supplied with a NVIDIA deployment (see README); set CHARTSAFE_COSMOS_KEY to enable it.');
+  }
+  if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 1000) {
+    throw new HttpError(400, 'Provide a concept prompt between 1 and 1000 characters.');
+  }
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model_mode: 'text2image',
+        prompt: prompt.trim(),
+        resolution: '480_16_9',
+        num_inference_steps: 20,
+        seed: 42
+      }),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+  } catch (error) {
+    if (error && error.name === 'TimeoutError') {
+      throw new HttpError(504, 'The image model timed out. Try again.');
+    }
+    throw new HttpError(502, `Could not reach the image model (${error && error.message ? error.message : 'network error'}).`);
+  }
+  if (!response.ok) {
+    console.error(`[chartsafe] cosmos returned HTTP ${response.status}`);
+    if (response.status === 401 || response.status === 403) {
+      throw new HttpError(502, 'The image model rejected the configured key. Cosmos requires its own deployment credentials.');
+    }
+    throw new HttpError(502, `The image model returned HTTP ${response.status}.`);
+  }
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new HttpError(502, 'The image model returned a malformed response.');
+  }
+  const image = typeof data.b64_image === 'string' ? data.b64_image : '';
+  if (!image || image.length < 50 || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.slice(0, 100))) {
+    throw new HttpError(502, 'The image model returned no usable image.');
+  }
+  return { image: `data:image/png;base64,${image}` };
+}
+
 function readUploadedPng(request) {
   return new Promise((resolve, reject) => {
     let upload;
@@ -652,12 +721,36 @@ function createServer(allowedOrigins = new Set(
       sendJson(response, 200, { status: 'ok' });
       return;
     }
-    if (pathname !== '/api/recolor' && pathname !== '/api/analyze') {
+    if (pathname !== '/api/recolor' && pathname !== '/api/analyze' && pathname !== '/api/concept') {
       sendJson(response, 404, { error: 'Not found.' });
       return;
     }
     if (request.method !== 'POST') {
       sendJson(response, 405, { error: 'Use POST with a PNG in the image field.' });
+      return;
+    }
+
+    if (pathname === '/api/concept') {
+      /* No image leaves the machine here: the client sends only a text
+         prompt composed from measured chart facts. */
+      try {
+        const chunks = [];
+        request.on('data', chunk => chunks.push(chunk));
+        await new Promise(resolve => request.on('end', resolve));
+        const body = Buffer.concat(chunks);
+        if (body.length > 10_000) throw new HttpError(413, 'The concept prompt is too large.');
+        let payload = null;
+        try { payload = JSON.parse(body.toString('utf8')); } catch { payload = null; }
+        const result = await generateConceptImage(payload && payload.prompt);
+        sendJson(response, 200, result);
+      } catch (error) {
+        if (!(error instanceof HttpError)) {
+          console.error('[chartsafe] concept request failed:', error && error.message ? error.message : error);
+        }
+        sendJson(response, error instanceof HttpError ? error.statusCode : 500, {
+          error: error instanceof HttpError ? error.message : 'The concept request failed.'
+        });
+      }
       return;
     }
 
@@ -732,6 +825,8 @@ if (require.main === module) {
 module.exports = {
   ACCESSIBLE_PALETTE,
   analyzeChart,
+  cosmosConfig,
+  generateConceptImage,
   assignPaletteIndices,
   createServer,
   downscalePng,

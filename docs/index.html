@@ -111,6 +111,10 @@ h2{font-size:18px;font-weight:600;letter-spacing:-.45px;margin:12px 0 8px}
 .ai-meta{font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6}
 .checks{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
 .plan-actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+.concept-figure{margin:14px 0 0;padding:10px;border:1px dashed var(--line);border-radius:8px;background:#fafbf7}
+.concept-figure img{max-width:100%;height:auto;border-radius:4px;display:block}
+.concept-figure figcaption{font-size:10px;color:var(--muted);margin-top:8px;line-height:1.6}
+.concept-figure figcaption a{color:var(--green);font-weight:600}
 .plan-actions button{width:auto;margin:0;white-space:nowrap}
 .checks h4{font-size:11px;margin:0 0 6px;color:var(--ink)}
 .check{font-size:11px;margin:5px 0;line-height:1.5;display:flex;gap:8px;align-items:start}
@@ -175,6 +179,12 @@ footer{border-top:1px solid var(--line);padding:22px 48px;display:flex;justify-c
 <h3 id="ai-consent-title">Send your chart for AI analysis?</h3>
 <p>Your chart PNG will be uploaded to the AI provider configured on the ChartSafe backend (an NVIDIA-hosted vision model). It is processed in memory by the provider and is not stored by ChartSafe. Nothing is uploaded until you approve.</p>
 <div class="consent-actions"><button id="ai-cancel" class="cancel-btn" type="button">Cancel</button><button id="ai-confirm" class="send-btn" type="button">Send for analysis</button></div>
+</dialog>
+<dialog id="concept-consent" aria-labelledby="concept-consent-title">
+<h3 id="concept-consent-title">Generate an AI concept image?</h3>
+<p>A <strong>text prompt</strong> describing your chart — no image — will be sent to NVIDIA Cosmos to render a decorative concept image. <strong>The result is AI-generated art, not your data:</strong> values, labels, and numbers in it are fabricated and must never be used as a chart. It exists to preview a style, nothing else.</p>
+<p class="small muted" id="concept-prompt-preview"></p>
+<div class="consent-actions"><button id="concept-cancel" class="cancel-btn" type="button">Cancel</button><button id="concept-confirm" class="send-btn" type="button">Generate concept</button></div>
 </dialog>
 <p class="simulation-disclaimer">Simulations are approximations and vary from individual experience. *The blue-yellow view uses a severe tritanomaly approximation. A recolored image is not a certification of accessibility.</p>
 </div></section>
@@ -662,6 +672,7 @@ function renderAiResults(model, analysis) {
       `<button id="apply-ai-plan" class="secondary" type="button">${state.aiApplied ? 'Re-apply AI color plan' : 'Apply AI color plan'}</button>` +
       `<button id="restore-heuristic" class="secondary" type="button" ${state.aiApplied ? '' : 'hidden'}>Restore heuristic correction</button>` +
       `<button id="legend-toggle" class="secondary" type="button">${state.legendOn ? 'Remove legend' : 'Add legend (AI-named)'}</button>` +
+      `<button id="concept-generate" class="secondary" type="button">Generate AI concept image <span aria-hidden="true">✦</span></button>` +
       `</div>` +
       `<p class="ai-meta">The plan is applied pixel-exactly by the deterministic engine — geometry, labels, and data can never change — then re-measured below. The legend is drawn from the AI's series names onto the emptiest corner.</p>`
     : '';
@@ -676,6 +687,8 @@ function renderAiResults(model, analysis) {
   if (restoreButton) restoreButton.addEventListener('click', restoreHeuristic);
   const legendButton=$('legend-toggle');
   if (legendButton) legendButton.addEventListener('click', ()=>state.legendOn?removeLegend():applyLegend());
+  const conceptButton=$('concept-generate');
+  if (conceptButton) conceptButton.addEventListener('click', openConceptDialog);
 }
 async function applyAiPlan() {
   if (!state.lastAnalysis || !state.original || state.aiBusy) return;
@@ -804,6 +817,56 @@ function removeLegend(){
   if(state.lastAnalysis)renderAiResults(state.lastAnalysis.model,state.lastAnalysis.analysis);
   status('Legend removed.');
 }
+/* --- Optional NVIDIA Cosmos concept image ---
+   A text prompt built from MEASURED facts (series count, accessible colors,
+   AI labels, chart type) is sent to the backend's Cosmos integration. No
+   image is uploaded. The result is decorative AI art about the chart style —
+   fabricated values, never a correction — and is labeled as such everywhere. */
+function conceptPrompt(){
+  const analysis=state.lastAnalysis.analysis;
+  const entries=legendEntries();
+  const seriesText=entries.map(e=>`${e.label||'a series'} shown in color #${e.color.map(v=>v.toString(16).padStart(2,'0')).join('')}`).join(', ');
+  return `A clean minimalist accessible ${escapeHtml(analysis.chart_type)} chart infographic on a white background, large readable labels and gridlines, ${entries.length} series: ${seriesText}. Professional data-visualization style, high contrast, colorblind-safe palette, flat vector look.`.slice(0,1000);
+}
+function openConceptDialog(){
+  if(!state.lastAnalysis||state.aiBusy)return;
+  $('concept-prompt-preview').textContent='Prompt: '+conceptPrompt();
+  $('concept-consent').showModal();
+}
+async function runConceptGeneration(){
+  $('concept-consent').close();
+  const rev=state.revision;
+  const prompt=conceptPrompt();
+  state.aiBusy=true;render();
+  let result=document.getElementById('concept-result');
+  if(!result){
+    result=document.createElement('div');
+    result.id='concept-result';
+    $('ai-results').appendChild(result);
+  }
+  result.hidden=false;
+  result.innerHTML='<p class="muted">Rendering the concept image with NVIDIA Cosmos… this can take a minute.</p>';
+  try{
+    const response=await fetch('/api/concept',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt}),signal:AbortSignal.timeout(240000)});
+    let payload=null;
+    try{payload=await response.json();}catch{payload=null;}
+    if(rev!==state.revision)return;
+    if(!response.ok||!payload||!payload.image)throw new Error((payload&&payload.error)||`The image service returned HTTP ${response.status}.`);
+    result.innerHTML =
+      `<figure class="concept-figure">` +
+      `<img alt="AI-generated concept image of the chart style — decorative only" src="${payload.image}">` +
+      `<figcaption>AI-generated concept — decorative style preview, <strong>not your data</strong>. Values and labels in it are fabricated by the image model. <a download="chartsafe-concept.png" href="${payload.image}">Download concept PNG</a></figcaption>` +
+      `</figure>`;
+    status('Concept image generated by NVIDIA Cosmos. It is AI art about your chart’s style — not your data.');
+  }catch(e){
+    if(rev!==state.revision)return;
+    result.innerHTML=`<p class="check warn"><b>!</b> ${escapeHtml(e.message)}</p>`;
+  }finally{
+    if(rev===state.revision){state.aiBusy=false;render();}
+  }
+}
+$('concept-cancel').addEventListener('click',()=>$('concept-consent').close());
+$('concept-confirm').addEventListener('click',runConceptGeneration);
 function renderAiError(message) {
   $('ai-results').innerHTML = `<p class="check warn"><b>!</b> ${escapeHtml(message)}</p><p class="ai-meta">AI review is optional — the corrected copy, simulations, and downloads above all work without it.</p>`;
   $('ai-results').hidden=false;

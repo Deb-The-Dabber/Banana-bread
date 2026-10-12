@@ -744,3 +744,125 @@ test('analyze: model that returns unusable JSON falls through too', async () => 
     await new Promise(resolve => stub.close(resolve));
   }
 });
+
+/* ---------------- AI concept image (Cosmos) endpoint ---------------- */
+
+const TINY_PNG_B64 = PNG.sync.write((() => {
+  const png = new PNG({ width: 4, height: 4 });
+  for (let i = 0; i < 16; i++) png.data.set([200, 60, 60, 255], i * 4);
+  return png;
+})()).toString('base64');
+
+test('concept: reports clear 503 when Cosmos credentials are not configured', async () => {
+  const saved = process.env.CHARTSAFE_COSMOS_KEY;
+  process.env.CHARTSAFE_COSMOS_KEY = '';
+  try {
+    const response = await fetch(`${baseUrl}/api/concept`, {
+      method: 'POST',
+      headers: { Origin: 'http://localhost:5500', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'a nice chart' })
+    });
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).error, /CHARTSAFE_COSMOS_KEY/);
+  } finally {
+    if (saved === undefined) delete process.env.CHARTSAFE_COSMOS_KEY;
+    else process.env.CHARTSAFE_COSMOS_KEY = saved;
+  }
+});
+
+test('concept: full happy path through a stubbed Cosmos upstream', async () => {
+  const { stub, url } = await stubUpstream((request, response, body) => {
+    assert.equal(request.url, '/');
+    assert.equal(request.headers.authorization, 'Bearer cosmos-key');
+    const payload = JSON.parse(body);
+    assert.equal(payload.model_mode, 'text2image');
+    assert.equal(payload.prompt, 'a nice chart');
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ b64_image: TINY_PNG_B64 }));
+  });
+  try {
+    const saved = process.env.CHARTSAFE_COSMOS_KEY;
+    const savedUrl = process.env.CHARTSAFE_COSMOS_URL;
+    process.env.CHARTSAFE_COSMOS_KEY = 'cosmos-key';
+    process.env.CHARTSAFE_COSMOS_URL = url;
+    try {
+      const response = await fetch(`${baseUrl}/api/concept`, {
+        method: 'POST',
+        headers: { Origin: 'http://localhost:5500', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'a nice chart' })
+      });
+      assert.equal(response.status, 200);
+      const payload = await response.json();
+      assert.match(payload.image, /^data:image\/png;base64,/);
+      assert.ok(payload.image.length > TINY_PNG_B64.length);
+    } finally {
+      if (saved === undefined) delete process.env.CHARTSAFE_COSMOS_KEY;
+      else process.env.CHARTSAFE_COSMOS_KEY = saved;
+      if (savedUrl === undefined) delete process.env.CHARTSAFE_COSMOS_URL;
+      else process.env.CHARTSAFE_COSMOS_URL = savedUrl;
+    }
+  } finally {
+    await new Promise(resolve => stub.close(resolve));
+  }
+});
+
+test('concept: rejects bad prompts and upstream failures honestly', async () => {
+  const saved = process.env.CHARTSAFE_COSMOS_KEY;
+  process.env.CHARTSAFE_COSMOS_KEY = 'cosmos-key';
+  try {
+    for (const [prompt, expect] of [['', 400], ['x'.repeat(1001), 400]]) {
+      const response = await fetch(`${baseUrl}/api/concept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+      assert.equal(response.status, expect);
+    }
+  } finally {
+    if (saved === undefined) delete process.env.CHARTSAFE_COSMOS_KEY;
+    else process.env.CHARTSAFE_COSMOS_KEY = saved;
+  }
+
+  const scenarios = [
+    { status: 404, body: JSON.stringify({ error: 'no route' }), expect: /HTTP 404/ },
+    { status: 200, body: JSON.stringify({ b64_image: 'zz' }), expect: /no usable image/ },
+    { status: 200, body: 'not json', expect: /malformed response/ },
+    { status: 403, body: '{}', expect: /deployment credentials/ }
+  ];
+  for (const scenario of scenarios) {
+    const { stub, url } = await stubUpstream((request, response) => {
+      response.writeHead(scenario.status, { 'Content-Type': 'application/json' });
+      response.end(scenario.body);
+    });
+    try {
+      const saved2 = process.env.CHARTSAFE_COSMOS_KEY;
+      const savedUrl2 = process.env.CHARTSAFE_COSMOS_URL;
+      process.env.CHARTSAFE_COSMOS_KEY = 'cosmos-key';
+      process.env.CHARTSAFE_COSMOS_URL = url;
+      try {
+        const response = await fetch(`${baseUrl}/api/concept`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: 'a nice chart' })
+        });
+        assert.equal(response.status, 502, JSON.stringify(scenario));
+        assert.match((await response.json()).error, scenario.expect);
+      } finally {
+        if (saved2 === undefined) delete process.env.CHARTSAFE_COSMOS_KEY;
+        else process.env.CHARTSAFE_COSMOS_KEY = saved2;
+        if (savedUrl2 === undefined) delete process.env.CHARTSAFE_COSMOS_URL;
+        else process.env.CHARTSAFE_COSMOS_URL = savedUrl2;
+      }
+    } finally {
+      await new Promise(resolve => stub.close(resolve));
+    }
+  }
+});
+
+test('concept: CORS preflight works', async () => {
+  const preflight = await fetch(`${baseUrl}/api/concept`, {
+    method: 'OPTIONS',
+    headers: { Origin: 'http://localhost:5500', 'Access-Control-Request-Method': 'POST' }
+  });
+  assert.equal(preflight.status, 204);
+});
