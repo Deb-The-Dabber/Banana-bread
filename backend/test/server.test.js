@@ -439,8 +439,8 @@ const CANNED_ANALYSIS = {
     { label: 7, color: '' }
   ],
   recolor_plan: [
-    { from: '#DC2B32', to: '#0072B2', reason: 'blue survives all three deficiency types' },
-    { from: '#2CA02C', to: '#E69F00', reason: 'orange contrasts in lightness and hue' },
+    { from: '#DC2B32', to: '#0072B2', label: 'Workshop A', reason: 'blue survives all three deficiency types' },
+    { from: '#2CA02C', to: '#E69F00', label: 42, reason: 'label must be a string to survive' },
     { from: 'not-a-hex', to: '#123456', reason: 'dropped: malformed from' },
     { from: '#ABCDEF', to: 'blue', reason: 'dropped: malformed to' },
     { from: '#112233', to: '#112233', reason: 'dropped: no-op' }
@@ -543,6 +543,8 @@ test('analyze: full happy path through a stubbed upstream provider', async () =>
       assert.equal(payload.analysis.recolor_plan.length, 2);
       assert.equal(payload.analysis.recolor_plan[0].from, '#dc2b32');
       assert.equal(payload.analysis.recolor_plan[0].to, '#0072b2');
+      assert.equal(payload.analysis.recolor_plan[0].label, 'Workshop A');
+      assert.equal(payload.analysis.recolor_plan[1].label, '', 'non-string labels are dropped, entry kept');
       assert.equal(payload.analysis.uncertainty, 'Cannot read exact values.');
     });
   } finally {

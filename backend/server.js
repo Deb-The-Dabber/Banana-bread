@@ -343,7 +343,7 @@ function downscalePng(png, maxDimension = AI_MAX_IMAGE_DIMENSION) {
    guessed from a downscaled copy. */
 const ANALYSIS_PROMPT_HEAD = `Analyze this chart image for color-vision accessibility (deuteranopia, protanopia, tritanopia).
 Reply with ONLY a JSON object in this exact format:
-{"chart_type":"bar|line|pie|scatter|mixed|other|unclear","summary":"1-2 sentences","findings":[{"severity":"high|medium|low","issue":"one sentence","where":"chart part","suggestion":"concrete fix"}],"color_series":[{"label":"series name","color":"color word or hex"}],"recolor_plan":[{"from":"#RRGGBB series color","to":"#RRGGBB accessible replacement of medium lightness, distinct from all other series in lightness AND hue","reason":"few words"}],"uncertainty":"one sentence"}
+{"chart_type":"bar|line|pie|scatter|mixed|other|unclear","summary":"1-2 sentences","findings":[{"severity":"high|medium|low","issue":"one sentence","where":"chart part","suggestion":"concrete fix"}],"color_series":[{"label":"series name","color":"color word or hex"}],"recolor_plan":[{"from":"#RRGGBB series color","to":"#RRGGBB accessible replacement of medium lightness, distinct from all other series in lightness AND hue","label":"the series name from the legend if readable","reason":"few words"}],"uncertainty":"one sentence"}
 One recolor_plan entry per distinct series color. If you cannot read the chart, use chart_type "unclear" and empty arrays. No prose, no markdown, JSON only.`;
 
 function analysisPromptFor(measuredHexes) {
@@ -406,6 +406,7 @@ function validateAnalysis(payload) {
       recolorPlan.push({
         from,
         to,
+        label: typeof entry.label === 'string' ? entry.label.slice(0, 60) : '',
         reason: typeof entry.reason === 'string' ? entry.reason.slice(0, 200) : ''
       });
     }

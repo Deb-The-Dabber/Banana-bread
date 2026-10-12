@@ -292,6 +292,17 @@ test('any image format is accepted and decoded safely', () => {
   assert.match(script, /could not be decoded as an image/);
 });
 
+test('AI-directed legend machinery is present and honest', () => {
+  assert.match(script, /async function applyLegend\(/);
+  assert.match(script, /function removeLegend\(/);
+  assert.match(script, /function emptiestCorner\(/);
+  assert.match(script, /function legendEntries\(/);
+  assert.match(html, /Add legend \(AI-named\)/);
+  assert.match(html, /Remove legend/);
+  assert.match(script, /AI named the series, the app drew the box/);
+  assert.match(script, /state\.legendOn/);
+});
+
 test('matchPlan maps AI hexes to detected groups within tolerance, injectively', () => {
   const context = vm.createContext({});
   vm.runInContext(
@@ -310,6 +321,10 @@ test('matchPlan maps AI hexes to detected groups within tolerance, injectively',
     { from: '#1c74b0', to: '#e69f00', reason: 'contrast with blue' },
     { from: '#994499', to: '#112233', reason: 'no such series' }
   ];
+  const labeled = [{ from: '#fb8212', to: '#0072b2', label: 'Mobile', reason: '' }, { from: '#1c74b0', to: '#e69f00', label: 'Desktop', reason: '' }];
+  const labeledResult = matchPlan(groups, labeled);
+  assert.equal(labeledResult.labels[0], 'Mobile');
+  assert.equal(labeledResult.labels[1], 'Desktop');
   const result = matchPlan(groups, plan);
   assert.equal(result.matched, 2);
   assert.equal(result.unmatched, 1);

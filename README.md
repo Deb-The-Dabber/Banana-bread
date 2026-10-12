@@ -11,7 +11,8 @@ view is applied to the right preview and the downloaded corrected PNG.
 Optionally, a consent-gated **generative AI review** adds model-generated
 findings next to pixel-measured color-pair checks, and the model can take
 the deciding role in recoloring: it proposes an accessible target color per
-series, ChartSafe applies that plan pixel-exactly, then re-measures it.
+series (naming each series), ChartSafe applies that plan pixel-exactly, then
+re-measures it — and can draw an AI-named legend onto the corrected chart.
 
 The page is fully client-side — decoding, recoloring, and the download are
 all local, no image is ever uploaded, and it makes no network requests.
@@ -120,7 +121,25 @@ target color the model chooses for each measured series color. One click
 applies the plan: the deterministic engine remaps exactly those pixels, so
 geometry, labels, and data can never change, and the measured ΔE checks
 re-run against the model's chosen palette (a bad AI pick gets flagged with
-numbers). "Restore heuristic correction" swaps back at any time. The flow is consent-gated — a dialog explains exactly what
+numbers). "Restore heuristic correction" swaps back at any time.
+
+**AI-directed legend:** when the model names the series it saw, "Add legend
+(AI-named)" draws a clean legend box — the AI's labels on the corrected
+colors, placed in the emptiest corner of the image — without touching
+anything else. The AI decides what the legend says; the app draws it.
+"Remove legend" restores the image byte-exactly.
+
+Verified model availability on NVIDIA NIM with the tested key (checked
+2026-10, by probing `integrate.api.nvidia.com`): `meta/llama-3.2-11b-vision-instruct`
+(reliable, 9–39 s — the default), `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`
+(intermittent capacity, reasoning-channel quirk — fallback),
+`google/gemma-4-31b-it` (live but ~3 min per request — too slow for the
+demo), and `nvidia/llama-3.2-90b-vision-instruct` (hangs). **Not available**
+through this API: PaliGemma (404 — not in the hosted catalog at all),
+`nvidia/cosmos-reason2-8b` (listed but not entitled for this account), and
+**no image-generation models of any kind** — so no generative image editing;
+that is exactly why every AI fix here is applied by the deterministic pixel
+engine instead. The flow is consent-gated — a dialog explains exactly what
 will be uploaded before anything leaves the machine, and canceling sends
 nothing. Alongside the model's findings, ChartSafe shows **measured
 checks** computed deterministically from the image's pixels: every

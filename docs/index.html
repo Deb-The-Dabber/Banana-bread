@@ -391,7 +391,7 @@ const CVD_CHECKS = (() => {
 })();
 
 const $ = id => document.getElementById(id);
-const state = {original:null, corrected:null, mode:'normal', sample:false, generated:false, groups:null, backgrounds:null, aiBusy:false, aiApplied:false, heuristic:null, lastAnalysis:null, revision:0, correctedRevision:0};
+const state = {original:null, corrected:null, mode:'normal', sample:false, generated:false, groups:null, backgrounds:null, aiBusy:false, aiApplied:false, heuristic:null, lastAnalysis:null, legendOn:false, preLegend:null, revision:0, correctedRevision:0};
 const notes = {
   normal:'Both images are shown in their true colors.',
   deuteranopia:'The original keeps its true colors. The right preview shows an approximate simulation with absent medium-wavelength (M) cone function. The download uses the selected view.',
@@ -428,7 +428,7 @@ function render() {
   $('after-title').textContent=simulating?(state.corrected?'Recolored · ':'Simulation · ')+modeNames[state.mode]:'Recolored';
   $('vision-note').textContent=notes[state.mode];
   $('original-meta').textContent=state.original?`${state.original.width} × ${state.original.height}`:'Awaiting PNG';
-  $('corrected-meta').textContent=state.corrected?(state.sample?'Prepared example':state.aiApplied?'AI color plan':state.generated?'Generated in browser':'PNG loaded'):(simulating&&state.original?'Simulation only':'Awaiting result');
+  $('corrected-meta').textContent=state.corrected?(state.sample?'Prepared example':state.aiApplied?'AI color plan'+(state.legendOn?' · legend':''):state.generated?'Generated in browser'+(state.legendOn?' · legend':''):'PNG loaded'):(simulating&&state.original?'Simulation only':'Awaiting result');
   $('result-title').textContent=state.corrected?'Corrected image ready to download':'Compare with confidence';
   $('result-note').textContent=state.corrected
     ?(simulating?`Exports the corrected PNG with the ${modeNames[state.mode]} preview applied.`:'Exports the corrected PNG in its true colors.')+' Check labels and data in both images.'
@@ -482,6 +482,7 @@ async function decodeImage(blob, name='chart.png') {
 function invalidate() {
   state.revision++; state.correctedRevision++; state.groups=null; state.backgrounds=null;
   state.aiApplied=false; state.heuristic=null; state.lastAnalysis=null;
+  state.legendOn=false; state.preLegend=null;
   $('ai-results').hidden=true; $('ai-results').replaceChildren();
 }
 /* Builds the corrected preview item entirely in the browser: run the
@@ -609,6 +610,7 @@ function escapeHtml(value){return String(value).replace(/[&<>"']/g,ch=>({'\x26':
 function matchPlan(groups, plan) {
   const hexToRgb = hex => [1, 3, 5].map(index => Number.parseInt(hex.slice(index, index + 2), 16));
   const overrides = {};
+  const labels = {};
   const used = new Set();
   groups.forEach((group, groupIndex) => {
     let bestEntry = -1;
@@ -621,9 +623,10 @@ function matchPlan(groups, plan) {
     if (bestEntry >= 0 && bestDistance <= 70 * 70) {
       used.add(bestEntry);
       overrides[groupIndex] = hexToRgb(plan[bestEntry].to);
+      labels[groupIndex] = plan[bestEntry].label || '';
     }
   });
-  return { overrides, matched: used.size, unmatched: plan.length - used.size };
+  return { overrides, labels, matched: used.size, unmatched: plan.length - used.size };
 }
 function colorSwatch(rgb){return `<i class="swatch" style="background:rgb(${rgb[0]},${rgb[1]},${rgb[2]})"></i> <code>#${rgb.map(v=>v.toString(16).padStart(2,'0')).join('')}</code>`;}
 function renderChecks() {
@@ -655,8 +658,12 @@ function renderAiResults(model, analysis) {
   const plan = analysis.recolor_plan || [];
   const planSection = plan.length && state.groups && state.groups.length
     ? `<p class="small muted">The model proposes recoloring: ` + plan.map(entry => `<code>${escapeHtml(entry.from)} → ${escapeHtml(entry.to)}</code>`).join(' · ') + `</p>` +
-      `<div class="plan-actions"><button id="apply-ai-plan" class="secondary" type="button">${state.aiApplied ? 'Re-apply AI color plan' : 'Apply AI color plan'}</button><button id="restore-heuristic" class="secondary" type="button" ${state.aiApplied ? '' : 'hidden'}>Restore heuristic correction</button></div>` +
-      `<p class="ai-meta">The plan is applied pixel-exactly by the deterministic engine — geometry, labels, and data can never change — then re-measured below.</p>`
+      `<div class="plan-actions">` +
+      `<button id="apply-ai-plan" class="secondary" type="button">${state.aiApplied ? 'Re-apply AI color plan' : 'Apply AI color plan'}</button>` +
+      `<button id="restore-heuristic" class="secondary" type="button" ${state.aiApplied ? '' : 'hidden'}>Restore heuristic correction</button>` +
+      `<button id="legend-toggle" class="secondary" type="button">${state.legendOn ? 'Remove legend' : 'Add legend (AI-named)'}</button>` +
+      `</div>` +
+      `<p class="ai-meta">The plan is applied pixel-exactly by the deterministic engine — geometry, labels, and data can never change — then re-measured below. The legend is drawn from the AI's series names onto the emptiest corner.</p>`
     : '';
   $('ai-results').innerHTML =
     `<p>${escapeHtml(analysis.summary)}</p>${findings}${series}${renderChecks()}${planSection}` +
@@ -667,6 +674,8 @@ function renderAiResults(model, analysis) {
   if (applyButton) applyButton.addEventListener('click', applyAiPlan);
   const restoreButton=$('restore-heuristic');
   if (restoreButton) restoreButton.addEventListener('click', restoreHeuristic);
+  const legendButton=$('legend-toggle');
+  if (legendButton) legendButton.addEventListener('click', ()=>state.legendOn?removeLegend():applyLegend());
 }
 async function applyAiPlan() {
   if (!state.lastAnalysis || !state.original || state.aiBusy) return;
@@ -698,9 +707,102 @@ function restoreHeuristic() {
   state.groups=state.heuristic.groups;
   state.heuristic=null;
   state.aiApplied=false;
+  if (state.legendOn) { state.legendOn=false; state.preLegend=null; }
   render();
   renderAiResults(state.lastAnalysis.model, state.lastAnalysis.analysis);
   status('Heuristic correction restored. You can apply the AI color plan again anytime.');
+}
+/* --- AI-directed legend generation ---
+   The AI names the series; this engine draws the legend deterministically
+   onto the corrected image — nothing else about the chart changes. The
+   emptiest corner (fewest non-background pixels) is chosen for placement. */
+function legendEntries() {
+  const plan=(state.lastAnalysis && state.lastAnalysis.analysis.recolor_plan)||[];
+  const {labels}=matchPlan(state.groups||[], plan);
+  return (state.groups||[]).map((group,index)=>({
+    color: group.to,
+    label: labels[index] || 'Series '+(index+1)
+  })).filter(entry=>entry.color);
+}
+function emptiestCorner(pixels,width,height){
+  const q=[[0,0],[width/2,0],[0,height/2],[width/2,height/2]];
+  let best=3,bestInk=Infinity;
+  q.forEach(([qx,qy],index)=>{
+    let ink=0;
+    for(let y=Math.floor(qy);y<Math.floor(qy+height/2);y+=4){
+      for(let x=Math.floor(qx);x<Math.floor(qx+width/2);x+=4){
+        const i=((y|0)*width+(x|0))*4;
+        if(pixels[i+3]>0 && (pixels[i]+pixels[i+1]+pixels[i+2])<735) ink++;
+      }
+    }
+    /* Prefer bottom-right on ties (classic legend position). */
+    if(ink<bestInk || (ink===bestInk && index===3)){bestInk=ink;best=index;}
+  });
+  return best;
+}
+async function buildLegendItem(item, entries){
+  const {width,height,pixels}=item;
+  const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+  const ctx=canvas.getContext('2d');
+  ctx.putImageData(pixels,0,0);
+  const fontPx=Math.max(13,Math.round(Math.min(width,height)/48));
+  const swatch=Math.round(fontPx*0.9), pad=Math.round(fontPx*0.8), rowH=fontPx*1.8;
+  ctx.font='600 '+fontPx+'px Arial, sans-serif';
+  const boxW2=pad*2+swatch+pad*0.8+Math.max(...entries.map(e=>ctx.measureText(e.label).width))+(fontPx*0.2);
+  const boxH=pad*2+entries.length*rowH;
+  const margin=Math.round(Math.min(width,height)*0.03);
+  const corner=emptiestCorner(pixels.data,width,height);
+  const x=corner%2===0?margin:Math.max(margin,width-boxW2-margin);
+  const y=corner<2?margin:Math.max(margin,height-boxH-margin);
+  ctx.fillStyle='rgba(255,255,255,0.92)';
+  ctx.strokeStyle='rgba(0,0,0,0.25)';
+  ctx.lineWidth=Math.max(1,fontPx/14);
+  const r=fontPx*0.5;
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);ctx.lineTo(x+boxW2-r,y);ctx.arcTo(x+boxW2,y,x+boxW2,y+r,r);
+  ctx.lineTo(x+boxW2,y+boxH-r);ctx.arcTo(x+boxW2,y+boxH,x+boxW2-r,y+boxH,r);
+  ctx.lineTo(x+r,y+boxH);ctx.arcTo(x,y+boxH,x,y+boxH-r,r);
+  ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);
+  ctx.fill();ctx.stroke();
+  entries.forEach((entry,index)=>{
+    const cy=y+pad+rowH*index+rowH/2;
+    ctx.fillStyle='rgb('+entry.color[0]+','+entry.color[1]+','+entry.color[2]+')';
+    ctx.fillRect(x+pad,cy-swatch/2,swatch,swatch);
+    ctx.fillStyle='#111';
+    ctx.textBaseline='middle';
+    ctx.font='600 '+fontPx+'px Arial, sans-serif';
+    ctx.fillText(entry.label,x+pad+swatch+pad*0.8,cy);
+  });
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+  const outPixels=ctx.getImageData(0,0,width,height);
+  return {width,height,pixels:outPixels,blob,name:'chartsafe-corrected.png'};
+}
+async function applyLegend(){
+  if(!state.corrected||!state.groups||state.aiBusy)return;
+  const entries=legendEntries();
+  if(entries.length<1){status('Not enough series information to draw a legend.','error');return;}
+  const rev=state.revision,ticket=++state.correctedRevision;
+  state.aiBusy=true;render();
+  try{
+    if(!state.legendOn) state.preLegend=state.corrected;
+    const legendItem=await buildLegendItem(state.corrected,entries);
+    if(rev!==state.revision||ticket!==state.correctedRevision)return;
+    state.corrected={...legendItem};
+    state.legendOn=true;
+    render();
+    renderAiResults(state.lastAnalysis.model,state.lastAnalysis.analysis);
+    status('Legend added: the AI named the series, the app drew the box — your chart data is untouched.');
+  }catch(e){if(rev===state.revision)status(e.message,'error');}
+  finally{if(rev===state.revision){state.aiBusy=false;render();}}
+}
+function removeLegend(){
+  if(!state.legendOn||!state.preLegend)return;
+  state.corrected=state.preLegend;
+  state.preLegend=null;
+  state.legendOn=false;
+  render();
+  if(state.lastAnalysis)renderAiResults(state.lastAnalysis.model,state.lastAnalysis.analysis);
+  status('Legend removed.');
 }
 function renderAiError(message) {
   $('ai-results').innerHTML = `<p class="check warn"><b>!</b> ${escapeHtml(message)}</p><p class="ai-meta">AI review is optional — the corrected copy, simulations, and downloads above all work without it.</p>`;
