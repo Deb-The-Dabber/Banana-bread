@@ -110,6 +110,8 @@ h2{font-size:18px;font-weight:600;letter-spacing:-.45px;margin:12px 0 8px}
 .swatch+code{font-size:10px}
 .ai-meta{font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6}
 .checks{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.plan-actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+.plan-actions button{width:auto;margin:0;white-space:nowrap}
 .checks h4{font-size:11px;margin:0 0 6px;color:var(--ink)}
 .check{font-size:11px;margin:5px 0;line-height:1.5;display:flex;gap:8px;align-items:start}
 .check b{flex:none}
@@ -145,11 +147,11 @@ footer{border-top:1px solid var(--line);padding:22px 48px;display:flex;justify-c
 <div class="intro-art" aria-hidden="true"><span class="art-label">A DIFFERENT PERSPECTIVE</span><div class="mini-bars"><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="art-bottom">Same data. More ways to see it.</span></div></section>
 <section class="workspace" aria-label="Chart workspace">
 <aside class="controls">
-<div class="step-label"><span>01</span> YOUR CHART</div><h2>Start with an image</h2><p class="muted small">Clean PNG bar and line charts work best.</p>
-<label class="dropzone" id="dropzone"><span class="upload-icon" aria-hidden="true">↑</span><strong>Choose a chart</strong><span>or drop a PNG here</span><span class="file-limit">Up to 10 MB · 8 megapixels</span><input id="upload" type="file" accept="image/png" aria-label="Upload original PNG chart"></label>
+<div class="step-label"><span>01</span> YOUR CHART</div><h2>Start with an image</h2><p class="muted small">PNG, JPG, WebP, GIF, and SVG all work. Clean chart exports look best.</p>
+<label class="dropzone" id="dropzone"><span class="upload-icon" aria-hidden="true">↑</span><strong>Choose a chart</strong><span>or drop an image here</span><span class="file-limit">Up to 10 MB · 8 megapixels</span><input id="upload" type="file" accept="image/*" aria-label="Upload original image"></label>
 <button id="sample" class="text-button">Try the sample chart <span aria-hidden="true">↗</span></button>
 <div class="divider"></div><div class="step-label"><span>02</span> CORRECTED VERSION</div><p class="muted small">A corrected copy is generated in your browser when you load a chart. Prefer your own version? Load it here — chart first.</p>
-<label class="secondary file-button">Load corrected PNG<input id="corrected-upload" type="file" accept="image/png" disabled aria-label="Upload corrected PNG chart"></label>
+<label class="secondary file-button">Load corrected image<input id="corrected-upload" type="file" accept="image/*" disabled aria-label="Upload corrected image"></label>
 <div class="privacy"><span aria-hidden="true">◉</span><p>Everything stays in your browser. No image is ever uploaded.</p></div>
 </aside>
 <div class="studio">
@@ -296,7 +298,10 @@ const RECOLOR = (() => {
     }
     return clusters;
   }
-  function recolor(pixels) {
+  function recolor(pixels, overrides) {
+    /* overrides (optional): { groupIndex: [r,g,b] } — per-series target
+       colors chosen by the AI plan instead of the fixed palette. Mirrors
+       backend/server.js for the default (no-override) path. */
     const clusters = detectSeriesColors(pixels);
     const totalPixels = pixels.length / 4;
     /* A cluster covering >60% of ALL pixels is almost certainly a background
@@ -308,7 +313,7 @@ const RECOLOR = (() => {
     }
     const activeClusters = clusters.filter(cluster => !cluster.isBackground);
     const assignment = assignPaletteIndices(activeClusters, ACCESSIBLE_PALETTE);
-    activeClusters.forEach((cluster, index) => { cluster.paletteIndex = assignment[index]; });
+    activeClusters.forEach((cluster, index) => { cluster.paletteIndex = assignment[index]; cluster.activeIndex = index; });
     const out = new Uint8ClampedArray(pixels);
     for (let i = 0; i < pixels.length; i += 4) {
       const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
@@ -325,7 +330,8 @@ const RECOLOR = (() => {
       }
       if (nearest < 0 || clusters[nearest].isBackground || nearestDistance >= COLOR_MATCH_DISTANCE ** 2) continue;
       const confidence = Math.max(0, 1 - Math.sqrt(nearestDistance) / COLOR_MATCH_DISTANCE);
-      const target = ACCESSIBLE_PALETTE[clusters[nearest].paletteIndex];
+      const activeIndex = clusters[nearest].activeIndex;
+      const target = (overrides && overrides[activeIndex]) || ACCESSIBLE_PALETTE[clusters[nearest].paletteIndex];
       out[i] = Math.round(r + (target[0] - r) * confidence);
       out[i + 1] = Math.round(g + (target[1] - g) * confidence);
       out[i + 2] = Math.round(b + (target[2] - b) * confidence);
@@ -333,11 +339,14 @@ const RECOLOR = (() => {
     return {
       data: out,
       colorGroups: activeClusters.length,
-      groups: activeClusters.map(cluster => ({ from: cluster.color.map(Math.round), to: ACCESSIBLE_PALETTE[cluster.paletteIndex] })),
+      groups: activeClusters.map(cluster => ({
+        from: cluster.color.map(Math.round),
+        to: (overrides && overrides[cluster.activeIndex]) || ACCESSIBLE_PALETTE[cluster.paletteIndex]
+      })),
       backgrounds: clusters.filter(cluster => cluster.isBackground).map(cluster => ({ color: cluster.color.map(Math.round), share: cluster.count / totalPixels }))
     };
   }
-  return { recolor };
+  return { recolor, redmeanDistanceSquared };
 })();
 
 /* Deterministic accessibility checks — measured from pixels, no AI involved.
@@ -382,7 +391,7 @@ const CVD_CHECKS = (() => {
 })();
 
 const $ = id => document.getElementById(id);
-const state = {original:null, corrected:null, mode:'normal', sample:false, generated:false, groups:null, backgrounds:null, aiBusy:false, revision:0, correctedRevision:0};
+const state = {original:null, corrected:null, mode:'normal', sample:false, generated:false, groups:null, backgrounds:null, aiBusy:false, aiApplied:false, heuristic:null, lastAnalysis:null, revision:0, correctedRevision:0};
 const notes = {
   normal:'Both images are shown in their true colors.',
   deuteranopia:'The original keeps its true colors. The right preview shows an approximate simulation with absent medium-wavelength (M) cone function. The download uses the selected view.',
@@ -419,36 +428,68 @@ function render() {
   $('after-title').textContent=simulating?(state.corrected?'Recolored · ':'Simulation · ')+modeNames[state.mode]:'Recolored';
   $('vision-note').textContent=notes[state.mode];
   $('original-meta').textContent=state.original?`${state.original.width} × ${state.original.height}`:'Awaiting PNG';
-  $('corrected-meta').textContent=state.corrected?(state.sample?'Prepared example':state.generated?'Generated in browser':'PNG loaded'):(simulating&&state.original?'Simulation only':'Awaiting result');
+  $('corrected-meta').textContent=state.corrected?(state.sample?'Prepared example':state.aiApplied?'AI color plan':state.generated?'Generated in browser':'PNG loaded'):(simulating&&state.original?'Simulation only':'Awaiting result');
   $('result-title').textContent=state.corrected?'Corrected image ready to download':'Compare with confidence';
   $('result-note').textContent=state.corrected
     ?(simulating?`Exports the corrected PNG with the ${modeNames[state.mode]} preview applied.`:'Exports the corrected PNG in its true colors.')+' Check labels and data in both images.'
     :'Load a chart to generate its corrected version and download the PNG.';
   controls();
 }
-async function decodePNG(blob, name='chart.png') {
-  if (!blob.size || blob.size>10*1024*1024) throw new Error('Choose a non-empty PNG up to 10 MB.');
+/* Decodes any image the browser can read — PNG, JPEG, WebP, GIF, BMP, AVIF,
+   and SVG through an <img> fallback — into pixel data. PNG headers are
+   dimension-checked before decoding; rasterized SVGs and exotic decodes are
+   capped at 8 megapixels and 8192 px per side. */
+async function decodeImage(blob, name='chart.png') {
+  if (!blob.size || blob.size>10*1024*1024) throw new Error('Choose a non-empty image up to 10 MB.');
   const header=new Uint8Array(await blob.slice(0,24).arrayBuffer());
-  if (header.length<24 || ![137,80,78,71,13,10,26,10].every((v,i)=>header[i]===v)) throw new Error('This file is not a PNG. Export your chart as PNG and try again.');
-  const view=new DataView(header.buffer); const width=view.getUint32(16), height=view.getUint32(20);
-  if (!width || !height || width*height>8000000 || width>8192 || height>8192) throw new Error('Choose a PNG up to 8 megapixels and 8192 pixels per side.');
-  const bitmap=await createImageBitmap(blob);
+  const isPng=header.length>=24 && [137,80,78,71,13,10,26,10].every((v,i)=>header[i]===v);
+  if (isPng) {
+    const view=new DataView(header.buffer); const width=view.getUint32(16), height=view.getUint32(20);
+    if (!width || !height || width*height>8000000 || width>8192 || height>8192) throw new Error('Choose an image up to 8 megapixels and 8192 pixels per side.');
+  }
+  let bitmap;
+  try {
+    bitmap=await createImageBitmap(blob);
+  } catch {
+    /* createImageBitmap rejects SVG (and some exotic formats); render those
+       through an <img> element instead. */
+    bitmap=await new Promise((resolve,reject) => {
+      const url=URL.createObjectURL(blob);
+      const img=new Image();
+      img.onload=() => {
+        try {
+          const w=img.naturalWidth||300, h=img.naturalHeight||150;
+          const scale=Math.min(1, Math.sqrt(8000000/(w*h)), 8192/w, 8192/h);
+          const c=document.createElement('canvas');
+          c.width=Math.max(1,Math.round(w*scale)); c.height=Math.max(1,Math.round(h*scale));
+          c.getContext('2d',{willReadFrequently:true}).drawImage(img,0,0,c.width,c.height);
+          URL.revokeObjectURL(url);
+          resolve(createImageBitmap(c));
+        } catch(error) { URL.revokeObjectURL(url); reject(error); }
+      };
+      img.onerror=() => { URL.revokeObjectURL(url); reject(new Error('This file could not be decoded as an image. Try PNG, JPG, WebP, or GIF.')); };
+      img.src=url;
+    });
+  }
+  if (!bitmap || !bitmap.width || !bitmap.height) throw new Error('This file could not be decoded as an image.');
+  if (bitmap.width*bitmap.height>8000000 || bitmap.width>8192 || bitmap.height>8192) { if(bitmap.close)bitmap.close(); throw new Error('Choose an image up to 8 megapixels and 8192 pixels per side.'); }
   try {
     const c=document.createElement('canvas');c.width=bitmap.width;c.height=bitmap.height;
     const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(bitmap,0,0);
     return {width:c.width,height:c.height,pixels:ctx.getImageData(0,0,c.width,c.height),blob,name};
-  } finally { bitmap.close(); }
+  } finally { if(bitmap.close)bitmap.close(); }
 }
 function invalidate() {
   state.revision++; state.correctedRevision++; state.groups=null; state.backgrounds=null;
+  state.aiApplied=false; state.heuristic=null; state.lastAnalysis=null;
   $('ai-results').hidden=true; $('ai-results').replaceChildren();
 }
 /* Builds the corrected preview item entirely in the browser: run the
    recoloring heuristic on the decoded pixels and encode the result as a
    downloadable PNG. The original pixels are never modified. */
-async function recolorItem(item) {
+async function recolorItem(item, overrides) {
   const { width, height, data } = item.pixels;
-  const { data: recolored, colorGroups, groups, backgrounds } = RECOLOR.recolor(data);
+  const { data: recolored, colorGroups, groups, backgrounds } = RECOLOR.recolor(data, overrides);
   const canvas = document.createElement('canvas');
   canvas.width = width; canvas.height = height;
   canvas.getContext('2d').putImageData(new ImageData(recolored, width, height), 0, 0);
@@ -460,7 +501,7 @@ async function loadOriginal(file) {
   invalidate();const rev=state.revision;const ticket=++state.correctedRevision;
   state.original=null; state.corrected=null;state.sample=false;state.generated=false;render();status('Opening PNG…','busy');
   try {
-    const item=await decodePNG(file,file.name);
+    const item=await decodeImage(file,file.name);
     if(rev!==state.revision)return;
     state.original=item;render();
     status('Generating the corrected copy in your browser…','busy');
@@ -503,7 +544,7 @@ async function loadCorrected(file) {
   const rev=state.revision, ticket=++state.correctedRevision;
   state.corrected=null;render();status('Opening corrected PNG…','busy');
   try {
-    const item=await decodePNG(file,file.name);
+    const item=await decodeImage(file,file.name);
     if(rev!==state.revision || ticket!==state.correctedRevision)return;
     state.corrected=item;state.sample=false;state.generated=false;render();
     const warning=compareWarning(state.original,item);
@@ -524,7 +565,7 @@ async function sample() {
   invalidate();const rev=state.revision;state.original=null;state.corrected=null;state.sample=true;state.generated=false;render();status('Preparing example…','busy');
   try {
     const blobs=await Promise.all([drawSample(['#c45c50','#729545']),drawSample(['#0072b2','#e69f00'])]);
-    const images=await Promise.all(blobs.map((b,i)=>decodePNG(b,i?'sample-recolored.png':'sample-original.png')));
+    const images=await Promise.all(blobs.map((b,i)=>decodeImage(b,i?'sample-recolored.png':'sample-original.png')));
     if(rev!==state.revision)return;[state.original,state.corrected]=images;render();
     status('Prepared sample pair: identical chart data drawn with two palettes. This demonstrates the comparison; no AI or automatic correction was run.');
   } catch(e){if(rev===state.revision)status(e.message,'error');}
@@ -561,6 +602,29 @@ $('download').addEventListener('click',downloadCorrected);
    the provider key. On static hosting (GitHub Pages) the button explains
    the limitation instead of dead-ending. */
 function escapeHtml(value){return String(value).replace(/[&<>"']/g,ch=>({'\x26':'\x26amp;','<':'\x26lt;','>':'\x26gt;','"':'\x26quot;',"'":'\x26#39;'}[ch]));}
+/* Matches the AI's proposed colors to the detected color groups. The model
+   reads approximate hex values from a downscaled copy, so each group accepts
+   the closest plan entry within a redmean tolerance, and every plan entry is
+   used at most once. Returns recolorer overrides plus an honest report. */
+function matchPlan(groups, plan) {
+  const hexToRgb = hex => [1, 3, 5].map(index => Number.parseInt(hex.slice(index, index + 2), 16));
+  const overrides = {};
+  const used = new Set();
+  groups.forEach((group, groupIndex) => {
+    let bestEntry = -1;
+    let bestDistance = Infinity;
+    plan.forEach((entry, entryIndex) => {
+      if (used.has(entryIndex)) return;
+      const distance = RECOLOR.redmeanDistanceSquared(group.from, hexToRgb(entry.from));
+      if (distance < bestDistance) { bestDistance = distance; bestEntry = entryIndex; }
+    });
+    if (bestEntry >= 0 && bestDistance <= 70 * 70) {
+      used.add(bestEntry);
+      overrides[groupIndex] = hexToRgb(plan[bestEntry].to);
+    }
+  });
+  return { overrides, matched: used.size, unmatched: plan.length - used.size };
+}
 function colorSwatch(rgb){return `<i class="swatch" style="background:rgb(${rgb[0]},${rgb[1]},${rgb[2]})"></i> <code>#${rgb.map(v=>v.toString(16).padStart(2,'0')).join('')}</code>`;}
 function renderChecks() {
   const groups = state.groups || [];
@@ -588,11 +652,55 @@ function renderAiResults(model, analysis) {
   const series = analysis.color_series.length
     ? `<p class="small muted">Series the model read: ` + analysis.color_series.map(s => `${escapeHtml(s.label || 'unnamed')} (${escapeHtml(s.color)})`).join(' · ') + `</p>`
     : '';
+  const plan = analysis.recolor_plan || [];
+  const planSection = plan.length && state.groups && state.groups.length
+    ? `<p class="small muted">The model proposes recoloring: ` + plan.map(entry => `<code>${escapeHtml(entry.from)} → ${escapeHtml(entry.to)}</code>`).join(' · ') + `</p>` +
+      `<div class="plan-actions"><button id="apply-ai-plan" class="secondary" type="button">${state.aiApplied ? 'Re-apply AI color plan' : 'Apply AI color plan'}</button><button id="restore-heuristic" class="secondary" type="button" ${state.aiApplied ? '' : 'hidden'}>Restore heuristic correction</button></div>` +
+      `<p class="ai-meta">The plan is applied pixel-exactly by the deterministic engine — geometry, labels, and data can never change — then re-measured below.</p>`
+    : '';
   $('ai-results').innerHTML =
-    `<p>${escapeHtml(analysis.summary)}</p>${findings}${series}${renderChecks()}` +
+    `<p>${escapeHtml(analysis.summary)}</p>${findings}${series}${renderChecks()}${planSection}` +
     `<p class="ai-meta">Model: ${escapeHtml(model)} · chart type: ${escapeHtml(analysis.chart_type)}${analysis.uncertainty ? ` · Uncertainty: ${escapeHtml(analysis.uncertainty)}` : ''}</p>` +
     `<p class="ai-meta">AI findings are model interpretations, not verified facts. The measured checks above are computed from your image's pixels.</p>`;
   $('ai-results').hidden=false;
+  const applyButton=$('apply-ai-plan');
+  if (applyButton) applyButton.addEventListener('click', applyAiPlan);
+  const restoreButton=$('restore-heuristic');
+  if (restoreButton) restoreButton.addEventListener('click', restoreHeuristic);
+}
+async function applyAiPlan() {
+  if (!state.lastAnalysis || !state.original || state.aiBusy) return;
+  const plan = state.lastAnalysis.analysis.recolor_plan || [];
+  const rev=state.revision, ticket=++state.correctedRevision;
+  const { overrides, matched, unmatched } = matchPlan(state.groups, plan);
+  if (!matched) {
+    status('The AI’s proposed colors did not match any detected chart colors closely enough, so the heuristic correction stays. Try analyzing again.', 'error');
+    return;
+  }
+  state.aiBusy=true;render();
+  try {
+    if (!state.heuristic) state.heuristic = { corrected: state.corrected, groups: state.groups };
+    const { item: corrected, groups } = await recolorItem(state.original, overrides);
+    if(rev!==state.revision || ticket!==state.correctedRevision)return;
+    state.corrected=corrected; state.groups=groups; state.generated=true; state.aiApplied=true;
+    render();
+    renderAiResults(state.lastAnalysis.model, state.lastAnalysis.analysis);
+    status(`AI-guided correction applied: ${matched} series color${matched===1?'':'s'} remapped to the model’s chosen colors${unmatched?` (${unmatched} proposed color${unmatched===1?'':'s'} could not be matched to this chart)`:''}. The measured checks now verify the AI’s palette.`);
+  } catch(e) {
+    if(rev===state.revision)status(e.message,'error');
+  } finally {
+    if(rev===state.revision){state.aiBusy=false;render();}
+  }
+}
+function restoreHeuristic() {
+  if (!state.heuristic || !state.lastAnalysis) return;
+  state.corrected=state.heuristic.corrected;
+  state.groups=state.heuristic.groups;
+  state.heuristic=null;
+  state.aiApplied=false;
+  render();
+  renderAiResults(state.lastAnalysis.model, state.lastAnalysis.analysis);
+  status('Heuristic correction restored. You can apply the AI color plan again anytime.');
 }
 function renderAiError(message) {
   $('ai-results').innerHTML = `<p class="check warn"><b>!</b> ${escapeHtml(message)}</p><p class="ai-meta">AI review is optional — the corrected copy, simulations, and downloads above all work without it.</p>`;
@@ -604,12 +712,36 @@ async function runAnalysis() {
   state.aiBusy=true;render();
   $('ai-results').innerHTML='<p class="muted">Analyzing your chart with the AI model…</p>';$('ai-results').hidden=false;
   try {
-    const body=new FormData();body.append('image',state.original.blob,state.original.name);
-    const response=await fetch('/api/analyze',{method:'POST',body,signal:AbortSignal.timeout(120000)});
-    let payload=null;
-    try { payload=await response.json(); } catch { payload=null; }
+    /* Re-encode the original as PNG so the API contract stays uniform no
+       matter what format the user uploaded (JPG, WebP, SVG, …). */
+    const encodeCanvas=document.createElement('canvas');
+    encodeCanvas.width=state.original.width; encodeCanvas.height=state.original.height;
+    encodeCanvas.getContext('2d').putImageData(state.original.pixels,0,0);
+    const uploadBlob=await new Promise(resolve=>encodeCanvas.toBlob(resolve,'image/png'));
+    const body=new FormData();body.append('image',uploadBlob,state.original.name.replace(/\.[^.]*$/,'')+'.png');
+    const attempt=async()=>{
+      try {
+        const response=await fetch('/api/analyze',{method:'POST',body,signal:AbortSignal.timeout(120000)});
+        let payload=null;
+        try { payload=await response.json(); } catch { payload=null; }
+        return {response,payload};
+      } catch(error) { return {response:null,payload:null,error}; }
+    };
+    let result=await attempt();
+    /* Hosted models are variable under load; give a busy provider one
+     * automatic second chance before failing honestly. */
+    const retryable=result.error
+      ?(result.error.name==='TimeoutError'||result.error instanceof TypeError)
+      :(result.response&&(result.response.status===502||result.response.status===504||result.response.status===429));
+    if(retryable){
+      $('ai-results').innerHTML='<p class="muted">The AI provider is busy — retrying once…</p>';
+      result=await attempt();
+    }
     if(rev!==state.revision)return;
+    const {response,payload,error}=result;
+    if(error) throw new Error(error.name==='TimeoutError'?'The AI model timed out. It is under heavy load — try again in a minute.':`Could not contact the AI service (${error.message}). Is the backend running?`);
     if(!response.ok || !payload || !payload.analysis) throw new Error((payload && payload.error) || `The AI service returned HTTP ${response.status}.`);
+    state.lastAnalysis=payload;
     renderAiResults(payload.model, payload.analysis);
     status('AI review received. Model findings are interpretations; the measured checks are computed from your pixels.');
   } catch(e) {

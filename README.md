@@ -1,14 +1,17 @@
 # ChartSafe
 
-ChartSafe is a small tool for checking how a PNG chart reads for people with
-color-vision deficiencies. Everything core runs in your browser: load a PNG,
+ChartSafe is a small tool for checking how a chart reads for people with
+color-vision deficiencies. Everything core runs in your browser: load any
+image format (PNG, JPG, WebP, GIF, BMP, AVIF, SVG — decoded locally),
 get an automatically generated corrected version (dominant colors remapped
 to a colorblind-safe palette), preview both under approximate
 deuteranopia/protanopia/tritanopia simulations, and download the corrected
 PNG. The **Original** box always keeps its true colors; the selected vision
 view is applied to the right preview and the downloaded corrected PNG.
-Optionally, a consent-gated **AI chart review** adds model-generated
-findings next to pixel-measured color-pair checks.
+Optionally, a consent-gated **generative AI review** adds model-generated
+findings next to pixel-measured color-pair checks, and the model can take
+the deciding role in recoloring: it proposes an accessible target color per
+series, ChartSafe applies that plan pixel-exactly, then re-measures it.
 
 The page is fully client-side — decoding, recoloring, and the download are
 all local, no image is ever uploaded, and it makes no network requests.
@@ -111,8 +114,13 @@ can read the report header. Everything else gets 403.
 
 The studio can send your chart to a vision-capable AI model for a
 structured accessibility review: chart type, summary, findings with
-severity/suggestions, the series colors the model reads, and its stated
-uncertainty. The flow is consent-gated — a dialog explains exactly what
+severity/suggestions, the series colors the model reads, its stated
+uncertainty, and — the generative part — a **recolor plan**: an accessible
+target color the model chooses for each measured series color. One click
+applies the plan: the deterministic engine remaps exactly those pixels, so
+geometry, labels, and data can never change, and the measured ΔE checks
+re-run against the model's chosen palette (a bad AI pick gets flagged with
+numbers). "Restore heuristic correction" swaps back at any time. The flow is consent-gated — a dialog explains exactly what
 will be uploaded before anything leaves the machine, and canceling sends
 nothing. Alongside the model's findings, ChartSafe shows **measured
 checks** computed deterministically from the image's pixels: every
@@ -147,10 +155,13 @@ break the demo. Measured latency on real 2400x1200 charts: 9-35 s typically
 (occasionally up to ~75 s on the fallback model).
 
 `POST /api/analyze` accepts the same multipart PNG as `/api/recolor`
-(≤ 10 MB, ≤ 8 megapixels; the image is downscaled to ≤ 1024 px before the
-provider call) and returns `{ model, analysis }` with the validated schema
+(≤ 10 MB, ≤ 8 megapixels; the image is downscaled to ≤ 768 px before the
+provider call, and the measured dominant colors are injected into the
+prompt so the model's recolor plan targets real series colors) and returns
+`{ model, analysis }` with the validated schema
 `{ chart_type, summary, findings: [{severity, issue, where, suggestion}],
-color_series: [{label, color}], uncertainty }`. Unconfigured → 503;
+color_series: [{label, color}], recolor_plan: [{from, to, reason}],
+uncertainty }`. Unconfigured → 503;
 provider failure → 502/429/504 with an honest message; unusable model
 output → 502. The provider's reply is strictly validated and truncated;
 it is never executed or rendered as HTML.
@@ -225,8 +236,8 @@ fallback); those browser checks live outside the repo and are not part of
 
 ## Privacy
 
-Images never leave the browser by default: decoding, recoloring, the
-measured ΔE checks, and downloads all happen locally, and the page makes
-no network requests. The optional AI review uploads the chart PNG — only
+Images never leave the browser by default: decoding (any common format,
+including SVG), recoloring, the measured ΔE checks, and downloads all
+happen locally, and the page makes no network requests. The optional AI review uploads the chart PNG — only
 after explicit consent — to the configured provider via your local
 backend; the backend processes it in memory and stores nothing.

@@ -274,13 +274,72 @@ test('the in-page recolorer matches the backend algorithm byte for byte', () => 
 
 test('auto-generation is wired into the chart load flow', () => {
   assert.match(script, /recolorItem\(item\)/);
-  assert.match(script, /RECOLOR\.recolor\(data\)/);
+  assert.match(script, /RECOLOR\.recolor\(data/);
   assert.match(script, /'Generated in browser'/);
   assert.match(script, /state\.generated=true/);
+  /* The generated blob must flow into the download path unchanged. */
   assert.match(script, /let blob=state\.corrected\.blob/);
-  assert.match(script, /ChartSafeSimulation\.simulate\(pixels\.data,mode\)/);
-  assert.match(script, /chartsafe-corrected-\$\{mode\}\.png/);
-  assert.match(script, /canvas\.toBlob\(resolve,'image\/png'\)/);
+});
+
+test('any image format is accepted and decoded safely', () => {
+  assert.match(html, /accept="image\/\*"/);
+  assert.match(script, /async function decodeImage\(/);
+  assert.ok(!html.includes('accept="image/png"'), 'inputs must not be PNG-only');
+  assert.ok(!script.includes('async function decodePNG'), 'the PNG-only decoder is gone');
+  /* PNG dimension caps are checked BEFORE decoding (memory safety). */
+  assert.match(script, /view\.getUint32\(16\)/);
+  /* Undecodable files fail with an honest message. */
+  assert.match(script, /could not be decoded as an image/);
+});
+
+test('matchPlan maps AI hexes to detected groups within tolerance, injectively', () => {
+  const context = vm.createContext({});
+  vm.runInContext(
+    `${extractModule(script, 'const RECOLOR = (() => {')}\n${extractFunction(script, 'matchPlan')}\nmatchPlan`,
+    context
+  );
+  const matchPlan = vm.runInContext('matchPlan', context);
+  const groups = [
+    { from: [255, 127, 14], to: [0, 0, 0] },
+    { from: [31, 119, 180], to: [0, 0, 0] }
+  ];
+  /* Approximate hexes (off by a few units, as a model reading a downscaled
+     copy would produce) must still match; a third entry targets nothing. */
+  const plan = [
+    { from: '#fb8212', to: '#0072b2', reason: 'blue is safe' },
+    { from: '#1c74b0', to: '#e69f00', reason: 'contrast with blue' },
+    { from: '#994499', to: '#112233', reason: 'no such series' }
+  ];
+  const result = matchPlan(groups, plan);
+  assert.equal(result.matched, 2);
+  assert.equal(result.unmatched, 1);
+  assert.deepEqual([...result.overrides[0]], [0, 114, 178]);
+  assert.deepEqual([...result.overrides[1]], [230, 159, 0]);
+  /* Plan colors too far from any group are not applied. */
+  const far = matchPlan(groups, [{ from: '#994499', to: '#112233' }]);
+  assert.equal(far.matched, 0);
+  assert.deepEqual(Object.keys(far.overrides), []);
+});
+
+test('RECOLOR honors AI overrides byte-exactly at the series color', () => {
+  const RECOLOR = vm.runInContext(
+    `${extractModule(script, 'const RECOLOR = (() => {')}\nRECOLOR`,
+    vm.createContext({})
+  );
+  /* Two solid series: red (45 px — wins the count sort, so it is group 0)
+     and blue (35 px). */
+  const pixels = new Uint8ClampedArray(80 * 4);
+  for (let i = 0; i < 45; i++) pixels.set([220, 60, 50, 255], i * 4);
+  for (let i = 45; i < 80; i++) pixels.set([40, 90, 200, 255], i * 4);
+  const custom = { 0: [10, 200, 120] };
+  const result = RECOLOR.recolor(pixels, custom);
+  /* Group 0 (red) must be pulled to the AI's custom green, not the palette. */
+  assert.deepEqual([...result.groups[0].to], [10, 200, 120]);
+  assert.deepEqual([...result.data.subarray(0, 3)], [10, 200, 120], 'pixel at the cluster color reaches the custom target');
+  /* Group 1 (blue) keeps the palette target. */
+  assert.equal(result.groups[1].to.join(','), RECOLOR.recolor(pixels).groups[1].to.join(','));
+  /* The default (no-override) path keeps red on the palette target. */
+  assert.notEqual(RECOLOR.recolor(pixels).groups[0].to.join(','), custom[0].join(','));
 });
 
 test('escapeHtml neutralizes markup from untrusted model output', () => {

@@ -43,14 +43,16 @@ function aiConfig() {
     base: (process.env.CHARTSAFE_AI_BASE || 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, ''),
     /* Comma-separated list: tried in order. Capacity errors (503/504) and
        rate limits on one model fall through to the next. */
-    models: (process.env.CHARTSAFE_AI_MODEL || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning,meta/llama-3.2-11b-vision-instruct')
+    models: (process.env.CHARTSAFE_AI_MODEL || 'meta/llama-3.2-11b-vision-instruct,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning')
       .split(',')
       .map(model => model.trim())
       .filter(Boolean),
     timeoutMs: Number(process.env.CHARTSAFE_AI_TIMEOUT_MS || 90_000)
   };
 }
-const AI_MAX_IMAGE_DIMENSION = 1024;
+/* 768px kept the same reading quality on real charts while trimming
+   latency; vision models do not need print-resolution pixels. */
+const AI_MAX_IMAGE_DIMENSION = 768;
 const STATIC_FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
@@ -334,23 +336,23 @@ function downscalePng(png, maxDimension = AI_MAX_IMAGE_DIMENSION) {
   return out;
 }
 
-/* The analysis contract the model must answer with. Kept deliberately small
-   so small vision models can comply. Everything is validated after. */
-const ANALYSIS_PROMPT = `You are a chart accessibility reviewer. Analyze the attached chart image for people with color-vision deficiencies (deuteranopia, protanopia, tritanopia).
-Answer ONLY with a JSON object, no prose, using exactly this schema:
-{
-  "chart_type": "bar" | "line" | "pie" | "scatter" | "mixed" | "other" | "unclear",
-  "summary": "1-2 sentences describing the chart and its overall color accessibility.",
-  "findings": [
-    { "severity": "high" | "medium" | "low",
-      "issue": "the accessibility problem, one sentence",
-      "where": "which part of the chart",
-      "suggestion": "concrete change to make, one sentence" }
-  ],
-  "color_series": [ { "label": "legend/series name if readable, else a short description", "color": "best-guess color word like red, blue, #RRGGBB" } ],
-  "uncertainty": "what you could not determine about this image, one sentence"
+/* The analysis contract the model must answer with. Kept deliberately
+   compact: small vision models degrade on long schemas and stop emitting
+   JSON. The measured dominant series colors are injected per request so the
+   model's recolor_plan "from" values match reality exactly instead of being
+   guessed from a downscaled copy. */
+const ANALYSIS_PROMPT_HEAD = `Analyze this chart image for color-vision accessibility (deuteranopia, protanopia, tritanopia).
+Reply with ONLY a JSON object in this exact format:
+{"chart_type":"bar|line|pie|scatter|mixed|other|unclear","summary":"1-2 sentences","findings":[{"severity":"high|medium|low","issue":"one sentence","where":"chart part","suggestion":"concrete fix"}],"color_series":[{"label":"series name","color":"color word or hex"}],"recolor_plan":[{"from":"#RRGGBB series color","to":"#RRGGBB accessible replacement of medium lightness, distinct from all other series in lightness AND hue","reason":"few words"}],"uncertainty":"one sentence"}
+One recolor_plan entry per distinct series color. If you cannot read the chart, use chart_type "unclear" and empty arrays. No prose, no markdown, JSON only.`;
+
+function analysisPromptFor(measuredHexes) {
+  const line = measuredHexes.length
+    ? ` The measured dominant series colors in this image are: ${measuredHexes.join(', ')}. Use these exact hex values as every recolor_plan "from".
+Good candidate targets (optional suggestions, you may choose others): #0072B2 blue, #E69F00 orange, #009E73 bluish green, #D55E00 vermillion, #CC79A7 reddish purple, #56B4E9 sky blue. Never propose pure saturated primaries like #FF0000, #00FF00, #0000FF, #FFFF00.`
+    : '';
+  return ANALYSIS_PROMPT_HEAD + line;
 }
-If you cannot read the chart, say so in "summary", use chart_type "unclear", and return an empty findings array. Do not invent values, numbers, or series you cannot see.`;
 
 const SEVERITIES = new Set(['high', 'medium', 'low']);
 
@@ -391,11 +393,30 @@ function validateAnalysis(payload) {
     }
   }
 
+  /* The generative part of the correction: the model chooses an accessible
+     target color per series. Strictly validated — only well-formed, distinct
+     hex pairs survive; anything malformed is dropped, never trusted. */
+  const recolorPlan = [];
+  if (Array.isArray(payload.recolor_plan)) {
+    for (const entry of payload.recolor_plan) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const from = typeof entry.from === 'string' ? entry.from.trim().toLowerCase() : '';
+      const to = typeof entry.to === 'string' ? entry.to.trim().toLowerCase() : '';
+      if (!/^#[0-9a-f]{6}$/.test(from) || !/^#[0-9a-f]{6}$/.test(to) || from === to) continue;
+      recolorPlan.push({
+        from,
+        to,
+        reason: typeof entry.reason === 'string' ? entry.reason.slice(0, 200) : ''
+      });
+    }
+  }
+
   return {
     chart_type: chartType.slice(0, 20),
     summary: summary.slice(0, 1000),
     findings: findings.slice(0, 12),
     color_series: colorSeries.slice(0, 12),
+    recolor_plan: recolorPlan.slice(0, 8),
     uncertainty: typeof payload.uncertainty === 'string' ? payload.uncertainty.slice(0, 500) : ''
   };
 }
@@ -442,6 +463,11 @@ async function analyzeChart(buffer) {
   } catch {
     throw new HttpError(400, 'The uploaded file is not a valid PNG.');
   }
+  /* Measured dominant colors, computed from the actual pixels so the model's
+     recolor plan targets real series colors instead of guesses. */
+  const measuredHexes = detectSeriesColors(source.data)
+    .slice(0, 6)
+    .map(cluster => '#' + cluster.color.map(Math.round).map(v => v.toString(16).padStart(2, '0')).join(''));
   const image = downscalePng(source);
   const encoded = PNG.sync.write(image).toString('base64');
 
@@ -465,7 +491,7 @@ async function analyzeChart(buffer) {
           messages: [{
             role: 'user',
             content: [
-              { type: 'text', text: ANALYSIS_PROMPT },
+              { type: 'text', text: analysisPromptFor(measuredHexes) },
               { type: 'image_url', image_url: { url: `data:image/png;base64,${encoded}` } }
             ]
           }],
@@ -499,9 +525,11 @@ async function analyzeChart(buffer) {
       lastError = new HttpError(502, 'The AI provider returned a malformed response.');
       continue;
     }
-    const content = data && data.choices && data.choices[0] && data.choices[0].message
-      ? data.choices[0].message.content : '';
-    const analysis = validateAnalysis(extractJsonFromModelReply(String(content || '')));
+    const message = data && data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message : {};
+    /* Reasoning-style models can put the answer (or the only parseable text)
+       in reasoning_content; try both. */
+    const content = String(message.content || '') || String(message.reasoning_content || '');
+    const analysis = validateAnalysis(extractJsonFromModelReply(content));
     if (analysis) return { model, analysis };
     lastError = new HttpError(502, 'The AI reply did not contain a usable analysis. Try again or switch CHARTSAFE_AI_MODEL.');
   }

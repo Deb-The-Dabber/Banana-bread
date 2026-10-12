@@ -438,6 +438,13 @@ const CANNED_ANALYSIS = {
     { label: 'Workshop B', color: 'green' },
     { label: 7, color: '' }
   ],
+  recolor_plan: [
+    { from: '#DC2B32', to: '#0072B2', reason: 'blue survives all three deficiency types' },
+    { from: '#2CA02C', to: '#E69F00', reason: 'orange contrasts in lightness and hue' },
+    { from: 'not-a-hex', to: '#123456', reason: 'dropped: malformed from' },
+    { from: '#ABCDEF', to: 'blue', reason: 'dropped: malformed to' },
+    { from: '#112233', to: '#112233', reason: 'dropped: no-op' }
+  ],
   uncertainty: 'Cannot read exact values.'
 };
 
@@ -498,7 +505,12 @@ test('analyze: full happy path through a stubbed upstream provider', async () =>
     assert.equal(payload.model, 'test/vision-model');
     const content = payload.messages[0].content;
     assert.equal(content[0].type, 'text');
-    assert.match(content[0].text, /color-vision deficiencies/);
+    assert.match(content[0].text, /color-vision accessibility/);
+    assert.match(content[0].text, /recolor_plan/);
+    /* The prompt must carry the measured cluster hexes of the sample image
+       so the model's plan targets real colors. */
+    assert.match(content[0].text, /#c45c50/);
+    assert.match(content[0].text, /#729545/);
     assert.equal(content[1].type, 'image_url');
     assert.match(content[1].image_url.url, /^data:image\/png;base64,/);
     response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -527,6 +539,10 @@ test('analyze: full happy path through a stubbed upstream provider', async () =>
       assert.equal(payload.analysis.findings[1].severity, 'medium');
       assert.equal(payload.analysis.findings[1].where, '');
       assert.equal(payload.analysis.color_series.length, 2);
+      /* Only the two well-formed, distinct hex pairs survive validation. */
+      assert.equal(payload.analysis.recolor_plan.length, 2);
+      assert.equal(payload.analysis.recolor_plan[0].from, '#dc2b32');
+      assert.equal(payload.analysis.recolor_plan[0].to, '#0072b2');
       assert.equal(payload.analysis.uncertainty, 'Cannot read exact values.');
     });
   } finally {
@@ -622,6 +638,7 @@ test('validateAnalysis drops junk and refuses empty payloads', () => {
   assert.equal(good.findings[1].severity, 'medium');
   assert.equal(good.findings[1].where, '');
   assert.equal(good.color_series.length, 2);
+  assert.equal(good.recolor_plan.length, 2, 'malformed and no-op plan entries are dropped');
 });
 
 test('extractJsonFromModelReply tolerates fences and prose', () => {
